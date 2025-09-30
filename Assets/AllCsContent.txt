@@ -1,0 +1,1549 @@
+﻿// === File: GameConfig.cs ===
+using System.Collections.Generic;
+using Element;
+using Services.ConfigProvider;
+using UnityEngine;
+
+[CreateAssetMenu(fileName = "ElementsType", menuName = "Game/ElementsType", order = 1)]
+public class GameConfig : ScriptableObject, IConfigProvider
+{
+    [SerializeField] private ElementType[] availableTypes;
+    [SerializeField] private int bottomCubeCount = 24;
+
+    public ElementType[] AvailableTypes => availableTypes;
+    public int BottomElementCount => bottomCubeCount;
+}
+
+// === File: GameConfigEditor.cs ===
+using UnityEngine;
+using UnityEditor;
+using Element;
+
+[CustomEditor(typeof(GameConfig))]
+public class GameConfigEditor : Editor
+{
+    public override void OnInspectorGUI()
+    {
+        DrawDefaultInspector();
+
+        GameConfig config = (GameConfig)target;
+
+        GUILayout.Space(10);
+
+        if (GUILayout.Button("Конвертировать выделенные Texture2D в ElementType"))
+        {
+            ConvertSelectedTexturesToElementTypes(config);
+        }
+    }
+
+    private void ConvertSelectedTexturesToElementTypes(GameConfig config)
+    {
+        var guids = Selection.assetGUIDs;
+        if (guids.Length == 0)
+        {
+            Debug.LogWarning("Нет выделенных объектов в проекте.");
+            return;
+        }
+
+        var texturesList = new System.Collections.Generic.List<Texture2D>();
+
+        foreach (var guid in guids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (tex != null)
+            {
+                texturesList.Add(tex);
+            }
+        }
+
+        if (texturesList.Count == 0)
+        {
+            Debug.LogWarning("В выделении нет Texture2D.");
+            return;
+        }
+
+        Undo.RecordObject(config, "Convert Textures to ElementTypes");
+
+        var elementTypes = new ElementType[texturesList.Count];
+
+        for (int i = 0; i < texturesList.Count; i++)
+        {
+            var tex = texturesList[i];
+
+            // Создаём спрайт из текстуры
+            Sprite sprite = AssetDatabase.LoadAssetAtPath<Sprite>(AssetDatabase.GetAssetPath(tex));
+            if (sprite == null)
+            {
+                sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+            }
+
+            elementTypes[i] = new ElementType
+            {
+                ID = tex.name,
+                Sprite = sprite
+            };
+        }
+
+        var so = new SerializedObject(config);
+        var prop = so.FindProperty("availableTypes");
+        if (prop != null)
+        {
+            prop.arraySize = elementTypes.Length;
+            for (int i = 0; i < elementTypes.Length; i++)
+            {
+                var elemProp = prop.GetArrayElementAtIndex(i);
+                var idProp = elemProp.FindPropertyRelative("ID");
+                var spriteProp = elemProp.FindPropertyRelative("Sprite");
+
+                idProp.stringValue = elementTypes[i].ID;
+                spriteProp.objectReferenceValue = elementTypes[i].Sprite;
+            }
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(config);
+            Debug.Log($"Успешно конвертировано {elementTypes.Length} ElementType в {config.name}");
+        }
+        else
+        {
+            Debug.LogError("В GameConfig нет поля availableTypes");
+        }
+    }
+}
+
+
+// === File: GameInstaller.cs ===
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Element;
+using Services.DragService;
+using Services.LocalizationService;
+using Services.NotificationService;
+using Services.PoolService;
+using UnityEngine;
+using VContainer;
+using VContainer.Unity;
+using Zones.DropZones.DropRules;
+using Zones.DropZones.Hole;
+using Zones.DropZones.Tower;
+using Zones.DropZones.Tower.TowerElement;
+using Zones.ScrollArea;
+using Zones.ScrollArea.ScrollElement;
+
+public class GameInstaller : LifetimeScope
+{
+    [SerializeField] private ScrollElementView scrollElementViewPrefab;
+    [SerializeField] private ScrollContainerView scrollContainerView;
+    [SerializeField] private DraggingElementView draggingElementViewPrefab;
+    [SerializeField] private GameConfig gameConfig;
+    [SerializeField] private HoleView holeViewPrefab;
+    [SerializeField] private TowerContainerView towerContainerViewPrefab;
+    [SerializeField] private TowerElementView towerElementViewPrefab;
+    [SerializeField] private Canvas canvas;
+    [SerializeField] private NotificationView notificationViewPrefab;
+
+    protected override void Configure(IContainerBuilder builder)
+    {
+        // Регистрация префабов и UI
+        builder.RegisterInstance(scrollElementViewPrefab).AsSelf();
+        builder.RegisterInstance(scrollContainerView).AsSelf();
+        builder.RegisterInstance(holeViewPrefab).AsSelf();
+        builder.RegisterInstance(towerContainerViewPrefab).AsSelf();
+
+        builder.Register<UnityLocalizationService>(Lifetime.Singleton).As<ILocalizationService>();
+
+        // Регистрация пулов
+        builder.Register<ObjectPool<ScrollElementView>>(Lifetime.Singleton)
+            .AsSelf()
+            .WithParameter("parent", scrollContainerView.transform)
+            .WithParameter("prefab", scrollElementViewPrefab);
+        builder.Register<ObjectPool<TowerElementView>>(Lifetime.Singleton)
+            .AsSelf()
+            .WithParameter("parent", towerContainerViewPrefab.transform)
+            .WithParameter("prefab", towerElementViewPrefab);
+
+        // Регистрация правил
+        builder.Register<NonRestrictionTowerDropRule>(Lifetime.Singleton).As<IDropRule>().AsSelf();
+        //builder.Register<OnlyOneColorTowerDropRule>(Lifetime.Singleton).As<IDropRule>().AsSelf();
+
+        // Модели и контроллеры
+        builder.Register<HoleModel>(Lifetime.Singleton);
+        builder.Register<HoleController>(Lifetime.Singleton).As<IDropZone>().AsSelf();
+
+        builder.Register<TowerContainerModel>(Lifetime.Singleton);
+        builder.Register<TowerContainerController>(Lifetime.Singleton).As<IDropZone>().AsSelf();
+
+        builder.Register<DraggingElementModel>(Lifetime.Singleton);
+        builder.Register<DragController>(Lifetime.Singleton);
+
+        builder.RegisterComponentInNewPrefab(draggingElementViewPrefab, Lifetime.Singleton)
+            .UnderTransform(canvas.transform)
+            .AsImplementedInterfaces()
+            .AsSelf();
+
+        builder.RegisterComponentOnNewGameObject<DragHandler>(Lifetime.Scoped)
+            .UnderTransform(canvas.transform)
+            .AsImplementedInterfaces()
+            .AsSelf();
+
+        builder.RegisterComponent(notificationViewPrefab)
+            .AsSelf();
+
+        builder.Register<NotificationService>(Lifetime.Singleton).AsSelf();
+
+        builder.RegisterFactory<ElementType, ScrollElementView>(container =>
+        {
+            var pool = container.Resolve<ObjectPool<ScrollElementView>>();
+            var dragHandler = container.Resolve<IDragStartHandler>();
+
+            return elementType =>
+            {
+                var view = pool.Get();
+                var model = new ScrollElementModel { ElementType = elementType };
+                var controller = new ScrollElementController(model, view);
+                controller.Initialize(Container.Resolve<IDragStartHandler>());
+                view.Initialize(controller);
+                return view;
+            };
+        }, Lifetime.Singleton);
+
+
+        // ScrollContainerModel
+        builder.Register<ScrollContainerModel>(Lifetime.Singleton);
+
+        // ScrollContainerController
+        builder.RegisterFactory<(ScrollContainerModel, ScrollContainerView, IDragStartHandler,
+            ObjectPool<ScrollElementView>, Func<ElementType, ScrollElementView>), ScrollContainerController>(
+            container =>
+            {
+                return tuple => new ScrollContainerController(
+                    tuple.Item1,
+                    tuple.Item2,
+                    tuple.Item3,
+                    tuple.Item4,
+                    tuple.Item5);
+            }, Lifetime.Singleton);
+    }
+
+    protected override void Awake()
+    {
+        base.Awake();
+
+        // Инициализация модели
+        var model = Container.Resolve<ScrollContainerModel>();
+        model.ElementsScroll.Clear();
+
+        var typesCount = gameConfig.AvailableTypes.Length;
+        var perTypeCount = gameConfig.BottomElementCount / typesCount;
+        var remainder = gameConfig.BottomElementCount % typesCount;
+
+        for (var i = 0; i < typesCount; i++)
+        {
+            var count = perTypeCount + (i < remainder ? 1 : 0);
+            var type = gameConfig.AvailableTypes[i];
+            for (var j = 0; j < count; j++)
+            {
+                model.ElementsScroll.Add(new ScrollElementModel { ElementType = type });
+            }
+        }
+
+        // Создаём ScrollContainerController через фабрику
+        var factory = Container.Resolve<Func<(ScrollContainerModel, ScrollContainerView, IDragStartHandler,
+            ObjectPool<ScrollElementView>, Func<ElementType, ScrollElementView>), ScrollContainerController>>();
+
+        var scrollController = factory((
+            model,
+            scrollContainerView,
+            Container.Resolve<IDragStartHandler>(),
+            Container.Resolve<ObjectPool<ScrollElementView>>(),
+            Container.Resolve<Func<ElementType, ScrollElementView>>()
+        ));
+        var dragHandler = Container.Resolve<IDragStartHandler>();
+        var towerController = Container.Resolve<TowerContainerController>();
+        towerController.Initialize(dragHandler);
+
+        // Сохраняйте scrollController, если нужно
+    }
+}
+
+// === File: Controller.cs ===
+using System;
+using UnityEngine;
+
+namespace Core
+{
+    public abstract class Controller<TModel, TView> : IController
+        where TModel : class, IModel
+        where TView : View
+    {
+        public TModel Model { get; private set; }
+        public TView View { get; private set; }
+
+        public Type GetModelType() => typeof(TModel);
+        public Type GetViewType() => typeof(TView);
+
+        public Controller(TModel model, TView view)
+        {
+            SetModel(model);
+            SetView(view);
+        }
+
+        public void SetModel(TModel model)
+        {
+            OnBeforeModelChanged();
+            Model = model;
+            OnModelChanged();
+        }
+
+        public void SetView(TView view)
+        {
+            OnBeforeViewChanged();
+            View = view;
+            OnViewChanged();
+        }
+
+        public void SetModel(object model)
+        {
+            if (model == null)
+            {
+                SetModel(default(TModel));
+                return;
+            }
+
+            if (model is not TModel tModel)
+            {
+                throw new ArgumentException("Wrong model type");
+            }
+
+            SetModel(tModel);
+        }
+
+        public void SetView(object view)
+        {
+            if (view == null)
+            {
+                SetView(default(TView));
+                return;
+            }
+
+            if (view is not TView tView)
+            {
+                throw new ArgumentException("Wrong view type");
+            }
+
+            SetView(tView);
+        }
+
+        protected virtual void OnBeforeModelChanged()
+        {
+        }
+
+        protected virtual void OnModelChanged()
+        {
+        }
+
+        protected virtual void OnBeforeViewChanged()
+        {
+        }
+
+        protected virtual void OnViewChanged()
+        {
+        }
+    }
+}
+
+// === File: IController.cs ===
+namespace Core
+{
+    public interface IController
+    {
+        public void SetModel(object model);
+        public void SetView(object view);
+    }
+}
+
+// === File: IModel.cs ===
+using System;
+
+namespace Core
+{
+    public interface IModel
+    {
+        
+    }
+}
+
+// === File: View.cs ===
+using UnityEngine;
+
+namespace Core
+{
+    public abstract class View : MonoBehaviour { }
+}
+
+// === File: ContainerElementView.cs ===
+using UnityEngine.EventSystems;
+
+namespace Element
+{
+    public class ContainerElementView : ElementView, IBeginDragHandler, IDragHandler, IEndDragHandler
+    {
+        public virtual void SetTransparency(float alpha)
+        {
+            //if (canvasGroup != null)
+                //canvasGroup.alpha = alpha;
+        }
+
+        public virtual void OnBeginDrag(PointerEventData eventData)
+        {
+        }
+
+        public virtual void OnEndDrag(PointerEventData eventData)
+        {
+        }
+
+        public void OnDrag(PointerEventData eventData)
+        {
+            
+        }
+    }
+}
+
+// === File: ElementModel.cs ===
+using Core;
+
+namespace Element
+{
+    public abstract class ElementModel : IModel
+    {
+        public ElementType ElementType;
+    }
+}
+
+// === File: ElementType.cs ===
+using System;
+using UnityEngine;
+
+namespace Element
+{
+    [Serializable]
+    public struct ElementType
+    {
+        public string ID;
+        public Sprite Sprite;
+    }
+}
+
+// === File: ElementView.cs ===
+using Core;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace Element
+{
+    public abstract class ElementView : View
+    {
+        [SerializeField] protected Image image;
+        [SerializeField] protected CanvasGroup canvasGroup;
+
+        public void SetSprite(Sprite sprite)
+        {
+            if (image != null) image.sprite = sprite;
+        }
+    }
+}
+
+// === File: IConfigProvider.cs ===
+using System.Collections.Generic;
+using Element;
+
+namespace Services.ConfigProvider
+{
+    public interface IConfigProvider
+    {
+        ElementType[] AvailableTypes { get; }
+        int BottomElementCount { get; }
+    }
+}
+
+// === File: DragController.cs ===
+using UnityEngine;
+using UnityEngine.EventSystems;
+using Element;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEditor.Localization.Plugins.XLIFF.V20;
+using Zones.DropZones.Tower;
+
+namespace Services.DragService
+{
+    public class DragController
+
+    {
+        private readonly DraggingElementModel model;
+        private readonly DraggingElementView view;
+        private readonly IReadOnlyList<IDropZone> dropZones;
+        private readonly NotificationService.NotificationService notificationService;
+
+        public DragController(DraggingElementModel model, DraggingElementView view, IReadOnlyList<IDropZone> dropZones,
+            NotificationService.NotificationService notificationService)
+        {
+            this.model = model;
+            this.view = view;
+            this.dropZones = dropZones;
+            this.notificationService = notificationService;
+
+            view.Initialize(this);
+        }
+
+        public void StartDrag(ElementModel elementModel, PointerEventData eventData)
+        {
+            model.ElementType = elementModel.ElementType;
+            view.Show(model.ElementType.Sprite, eventData.position);
+            eventData.pointerDrag = view.gameObject;
+        }
+
+        public void OnBeginDrag(PointerEventData eventData)
+        {
+        }
+
+        public void OnDrag(PointerEventData eventData)
+        {
+            view.SetPosition(eventData.position);
+        }
+
+        public void OnEndDrag(PointerEventData eventData)
+        {
+            var dropped = dropZones.Any(zone =>
+                zone.IsInsideZone(eventData.position) && zone.TryDropElement(model, view, eventData.position));
+
+            if (!dropped)
+            {
+                view.FadeOutAndHide(0.3f);
+                _ = notificationService.ShowNotification("MissCube");
+            }
+            else
+            {
+                view.Hide();
+            }
+        }
+    }
+}
+
+// === File: DraggingElementModel.cs ===
+using Element;
+using UnityEngine;
+
+namespace Services.DragService
+{
+    public class DraggingElementModel : ElementModel
+    {
+        public ElementModel ElementReference;
+    }
+}
+
+// === File: DraggingElementView.cs ===
+using Element;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using PrimeTween;
+
+namespace Services.DragService
+{
+    public class DraggingElementView : ElementView, IBeginDragHandler, IDragHandler, IEndDragHandler
+    {
+        private DragController controller;
+
+        private void Awake() => gameObject.SetActive(false);
+
+        public void Initialize(DragController controller)
+        {
+            this.controller = controller;
+        }
+
+        public void Show(Sprite sprite, Vector3 position)
+        {
+            SetSprite(sprite);
+            SetPosition(position);
+
+            canvasGroup.alpha = 0.5f;
+            gameObject.SetActive(true);
+        }
+
+        public void FadeOutAndHide(float duration)
+        {
+            if (canvasGroup == null) return;
+
+            Tween.Alpha(canvasGroup, 0f, duration, Ease.InQuad)
+                .OnComplete(Hide);
+        }
+
+        public void Hide() => gameObject.SetActive(false);
+        public void SetPosition(Vector3 position) => transform.position = position;
+        public void OnBeginDrag(PointerEventData eventData) => controller?.OnBeginDrag(eventData);
+        public void OnDrag(PointerEventData eventData) => controller?.OnDrag(eventData);
+        public void OnEndDrag(PointerEventData eventData) => controller?.OnEndDrag(eventData);
+    }
+}
+
+// === File: DragHandler.cs ===
+using Element;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using VContainer;
+
+namespace Services.DragService
+{
+    public class DragHandler : MonoBehaviour, IDragStartHandler
+    {
+        private DragController draggingController;
+
+        [Inject]
+        public void Construct(DragController draggingController)
+        {
+            this.draggingController = draggingController;
+        }
+
+        public void OnDragStart(ElementModel elementModel, ElementView elementView, PointerEventData eventData)
+        {
+            draggingController.StartDrag(elementModel, eventData);
+        }
+        
+    }
+}
+
+// === File: IDragStartHandler.cs ===
+using Element;
+using UnityEngine.EventSystems;
+
+namespace Services.DragService
+{
+    public interface IDragStartHandler
+    {
+        void OnDragStart(ElementModel elementModel, ElementView elementView, PointerEventData eventData);
+    }
+}
+
+// === File: IDropZone.cs ===
+using Element;
+using UnityEngine;
+
+namespace Services.DragService
+{
+    public interface IDropZone
+    {
+        bool IsInsideZone(Vector3 screenPosition);
+        bool TryDropElement(ElementModel elementModel, ElementView elementView, Vector3 dropWorldPosition);
+    }
+}
+
+// === File: FactoryService.cs ===
+using Core;
+using UnityEngine;
+using VContainer;
+
+namespace Services.FactoryService
+{
+    public class FactoryService<TModel, TView, TController> : IFactoryService<TModel, TView>
+        where TController : IController, new()
+        where TModel : class, IModel
+        where TView : View
+    {
+        private readonly TView prefab;
+
+        [Inject]
+        public FactoryService(TView prefab)
+        {
+            this.prefab = prefab;
+        }
+
+        public TView Create(TModel model)
+        {
+            var view = Object.Instantiate(prefab);
+            var controller = new TController();
+            controller.SetModel(model);
+            controller.SetView(view);
+            return view;
+        }
+    }
+}
+
+// === File: IFactoryService.cs ===
+using Core;
+
+namespace Services.FactoryService
+{
+    public interface IFactoryService<TModel, TView> where TModel : class, IModel where TView : View
+    {
+        TView Create(TModel model);
+    }
+}
+
+// === File: ILocalizationService.cs ===
+using System.Threading.Tasks;
+
+namespace Services.LocalizationService
+{
+    public interface ILocalizationService
+    {
+        Task<string> GetStringAsync(string key);
+    }
+}
+
+// === File: UnityLocalizationService.cs ===
+using System.Threading.Tasks;
+using UnityEngine.Localization;
+using UnityEngine.ResourceManagement.AsyncOperations;
+
+namespace Services.LocalizationService
+{
+    public class UnityLocalizationService : ILocalizationService
+    {
+        public Task<string> GetStringAsync(string key)
+        {
+            var tcs = new TaskCompletionSource<string>();
+
+            var localizedString = new LocalizedString
+            {
+                TableReference = "NotificationTable",
+                TableEntryReference = key
+            };
+
+            var handle = localizedString.GetLocalizedStringAsync();
+
+            handle.Completed += op =>
+            {
+                if (op.Status == AsyncOperationStatus.Succeeded)
+                    tcs.SetResult(op.Result);
+                else
+                    tcs.SetResult(key);
+            };
+
+            return tcs.Task;
+        }
+    }
+}
+
+// === File: NotificationService.cs ===
+using System.Threading.Tasks;
+using Services.LocalizationService;
+using UnityEngine;
+
+namespace Services.NotificationService
+{
+    public class NotificationService
+    {
+        private readonly ILocalizationService localizationService;
+        private readonly NotificationView notificationView;
+
+        public NotificationService(ILocalizationService localizationService, NotificationView notificationView)
+        {
+            this.localizationService = localizationService;
+            this.notificationView = notificationView;
+        }
+
+        public async Task ShowNotification(string localizationKey, float duration = 2f)
+        {
+            if (string.IsNullOrEmpty(localizationKey))
+            {
+                Debug.LogWarning("Notification key is empty");
+                return;
+            }
+
+            var localizedText = await localizationService.GetStringAsync(localizationKey);
+
+            notificationView.Show(localizedText, duration);
+        }
+    }
+}
+
+// === File: NotificationView.cs ===
+using Core;
+using PrimeTween;
+using TMPro;
+using UnityEngine;
+
+namespace Services.NotificationService
+{
+    public class NotificationView : View
+    {
+        [SerializeField] private TMP_Text textComponent;
+        [SerializeField] private CanvasGroup canvasGroup;
+
+        private void Awake()
+        {
+            if (canvasGroup == null)
+                canvasGroup = GetComponent<CanvasGroup>();
+            if (textComponent == null)
+                textComponent = GetComponentInChildren<TMP_Text>();
+        }
+
+        public void Show(string message, float displayDuration = 2f, float fadeDuration = 1f)
+        {
+            if (string.IsNullOrEmpty(message) || textComponent == null)
+                return;
+
+            textComponent.text = message;
+
+            canvasGroup.alpha = 0f;
+            gameObject.SetActive(true);
+
+            Tween.Alpha(canvasGroup, 1f, 0.3f, Ease.OutQuad)
+                .Chain(Tween.Delay(displayDuration))
+                .Chain(Tween.Alpha(canvasGroup, 0f, fadeDuration, Ease.InQuad))
+                .OnComplete(() => { gameObject.SetActive(false); });
+        }
+    }
+}
+
+// === File: ObjectPool.cs ===
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace Services.PoolService
+{
+    public class ObjectPool<T> where T : Component
+    {
+        private readonly T prefab;
+        private readonly Transform parent;
+        private readonly Queue<T> poolQueue = new();
+
+        public ObjectPool(T prefab, Transform parent = null)
+        {
+            this.prefab = prefab;
+            this.parent = parent;
+        }
+
+        public T Get()
+        {
+            if (poolQueue.Count > 0)
+            {
+                var obj = poolQueue.Dequeue();
+                obj.gameObject.SetActive(true);
+                return obj;
+            }
+            else
+            {
+                var obj = Object.Instantiate(prefab, parent);
+                return obj;
+            }
+        }
+
+        public void ReturnToPool(T obj)
+        {
+            obj.gameObject.SetActive(false);
+            obj.transform.SetParent(parent, false);
+            poolQueue.Enqueue(obj);
+        }
+
+        public void Clear()
+        {
+            while (poolQueue.Count > 0)
+            {
+                var obj = poolQueue.Dequeue();
+                Object.Destroy(obj.gameObject);
+            }
+        }
+
+        public void PreWarm(int count, Transform parent = null)
+        {
+            var targetParent = parent ?? this.parent;
+            for (var i = 0; i < count; i++)
+            {
+                var obj = Object.Instantiate(prefab, targetParent, worldPositionStays: false);
+                obj.gameObject.SetActive(false);
+                poolQueue.Enqueue(obj);
+            }
+        }
+    }
+}
+
+// === File: DropRules.cs ===
+using Element;
+using Zones.DropZones.Tower;
+
+namespace Zones.DropZones.DropRules
+{
+    public class NonRestrictionTowerDropRule : IDropRule
+    {
+        public bool CanAddElement(ElementModel element, TowerContainerModel towerContainer) => true;
+    }
+
+    public class OnlyOneColorTowerDropRule : IDropRule
+    {
+        public bool CanAddElement(ElementModel element, TowerContainerModel towerContainer)
+        {
+            if (towerContainer.Elements.Count == 0)
+                return true;
+
+            return element.ElementType.ID == towerContainer.Elements[0].ElementType.ID;
+        }
+    }
+}
+
+// === File: IDropRule.cs ===
+using Element;
+using Zones.DropZones.Tower;
+
+namespace Zones.DropZones.DropRules
+{
+    public interface IDropRule
+    {
+        bool CanAddElement(ElementModel element, TowerContainerModel towerContainer);
+    }
+}
+
+// === File: HoleController.cs ===
+using Core;
+using Element;
+using Services.DragService;
+using Services.NotificationService;
+using Services.PoolService;
+using UnityEngine;
+
+namespace Zones.DropZones.Hole
+{
+    public class HoleController : Controller<HoleModel, HoleView>, IDropZone
+    {
+        private readonly ObjectPool<ElementView> elementPool;
+        private readonly NotificationService notificationService;
+
+
+        public HoleController(HoleModel model, HoleView view, NotificationService notificationService) : base(model,
+            view)
+        {
+            this.notificationService = notificationService;
+        }
+
+        public bool IsInsideZone(Vector3 screenPosition)
+        {
+            return Model != null && Model.IsInsideEllipse(screenPosition);
+        }
+
+        public bool TryDropElement(ElementModel elementModel, ElementView elementView, Vector3 worlPosition)
+        {
+            if (elementView == null) return false;
+
+            var pos = elementView.transform.position;
+
+            PrimeTween.Tween.Position(elementView.transform, pos + Vector3.down * 1f, 0.3f, PrimeTween.Ease.InQuad)
+                .Chain(PrimeTween.Tween.Alpha(elementView.GetComponent<CanvasGroup>(), 0f, 0.3f,
+                    PrimeTween.Ease.InQuad))
+                .OnComplete(() => { elementPool.ReturnToPool(elementView); });
+
+            _ = notificationService.ShowNotification("DropHole");
+
+            return true;
+        }
+    }
+}
+
+// === File: HoleModel.cs ===
+using Core;
+using UnityEngine;
+
+namespace Zones.DropZones.Hole
+{
+    public class HoleModel : IModel
+    {
+        public Vector3 Position { get; set; }
+        public Vector2 EllipseSize { get; set; }
+
+        public bool IsInsideEllipse(Vector3 point)
+        {
+            var relative = new Vector2(point.x - Position.x, point.y - Position.y);
+            return (relative.x * relative.x) / (EllipseSize.x * EllipseSize.x) +
+                (relative.y * relative.y) / (EllipseSize.y * EllipseSize.y) <= 1f;
+        }
+    }
+}
+
+// === File: HoleView.cs ===
+using Core;
+
+namespace Zones.DropZones.Hole
+{
+    public class HoleView : View
+    {
+        
+    }
+}
+
+// === File: TowerContainerController.cs ===
+using System.Collections.Generic;
+using System.Linq;
+using Core;
+using Element;
+using Services.DragService;
+using Services.NotificationService;
+using Services.PoolService;
+using UnityEngine;
+using Zones.DropZones.DropRules;
+using Zones.DropZones.Tower.TowerElement;
+
+namespace Zones.DropZones.Tower
+{
+    public class TowerContainerController : Controller<TowerContainerModel, TowerContainerView>, IDropZone
+    {
+        private const float MaxHorizontalOffset = 50f;
+
+        private readonly IReadOnlyList<IDropRule> dropRules;
+        private readonly ObjectPool<TowerElementView> elementPool;
+        private readonly NotificationService notificationService;
+        private readonly List<TowerElementController> activeElementControllers = new();
+        private IDragStartHandler dragStartHandler;
+
+        public TowerContainerController(IReadOnlyList<IDropRule> dropRules, TowerContainerModel model,
+            TowerContainerView view, ObjectPool<TowerElementView> elementPool,
+            NotificationService notificationService) : base(model, view)
+        {
+            this.dropRules = dropRules;
+            this.elementPool = elementPool;
+            this.notificationService = notificationService;
+        }
+
+        public void Initialize(IDragStartHandler dragStartHandler)
+        {
+            this.dragStartHandler = dragStartHandler;
+            elementPool.PreWarm(20, View.ElementsContainer);
+        }
+
+        public bool TryDropElement(ElementModel elementModel, ElementView elementView, Vector3 dropWorldPosition)
+        {
+            if (Model == null || View == null) return false;
+
+            if (!dropRules.All(r => r.CanAddElement(elementModel, Model)))
+            {
+                return false;
+            }
+
+            var rectTransform = View.GetComponent<RectTransform>();
+            if (rectTransform == null) return false;
+
+            if (!IsInsideZone(dropWorldPosition))
+            {
+                _ = notificationService.ShowNotification("MissCube");
+                return false;
+            }
+
+            if (IsFirstElement())
+            {
+                if (RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, dropWorldPosition, null,
+                        out var localPoint))
+                {
+                    var rect = rectTransform.rect;
+                    var clampedX = Mathf.Clamp(localPoint.x, rect.xMin, rect.xMax);
+                    var clampedY = Mathf.Clamp(localPoint.y, rect.yMin, rect.yMax);
+                    Model.BasePosition = new Vector2(clampedX, clampedY);
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                var zoneTopY = rectTransform.rect.yMax;
+                var baseY = Model.BasePosition?.y ?? 0f;
+                var availableHeight = zoneTopY - baseY;
+
+                var rect = elementView.GetComponent<RectTransform>();
+                var newElementHeight = rect != null ? rect.rect.height * elementView.transform.localScale.y : 0f;
+
+                if (availableHeight - Model.CurrentHeight < newElementHeight)
+                {
+                    _ = notificationService.ShowNotification("HeightLimit");
+                    return false;
+                }
+            }
+
+            AddElement(elementModel, elementView);
+            _ = notificationService.ShowNotification("PlaceCube");
+
+            return true;
+        }
+
+
+        public bool IsInsideZone(Vector3 screenPosition)
+        {
+            if (View == null) return false;
+            var rectTransform = View.GetComponent<RectTransform>();
+            if (rectTransform == null) return false;
+
+            if (IsFirstElement())
+            {
+                return RectTransformUtility.RectangleContainsScreenPoint(rectTransform, screenPosition);
+            }
+
+            var topElementController = activeElementControllers.LastOrDefault();
+            if (topElementController == null) return false;
+            var topRect = topElementController.View.GetComponent<RectTransform>();
+            return topRect != null && RectTransformUtility.RectangleContainsScreenPoint(topRect, screenPosition);
+        }
+
+        private void AddElementInternal(ElementModel elementModel, ElementView elementView)
+        {
+            var rectTransform = elementView.GetComponent<RectTransform>();
+            var horizontalOffset = Random.Range(rectTransform.rect.width * -0.5f, rectTransform.rect.width * 0.5f);
+            var index = Model.ElementCount;
+
+            var elementHeight = rectTransform != null
+                ? rectTransform.rect.height * elementView.transform.localScale.y
+                : 0f;
+
+            var towerElement = new TowerElementModel
+            {
+                ElementType = elementModel.ElementType,
+                HorizontalOffset = horizontalOffset,
+                Index = index,
+                ElementHeight = elementHeight
+            };
+
+            Model.AddElementInternal(towerElement);
+
+            var towerElementView = elementPool.Get();
+
+            if (Model.Elements.Count == 1 && Model.BasePosition.HasValue)
+            {
+                towerElementView.transform.localPosition = Model.BasePosition.Value;
+            }
+            else
+            {
+                towerElementView.transform.localPosition = rectTransform.localPosition;
+            }
+
+            var elementController = new TowerElementController(towerElement, towerElementView);
+            elementController.Initialize(dragStartHandler);
+
+            towerElementView.Initialize(elementController);
+
+            activeElementControllers.Add(elementController);
+        }
+
+
+        public void AddElement(ElementModel elementModel, ElementView elementView)
+        {
+            AddElementInternal(elementModel, elementView);
+            UpdateElementsPositions();
+        }
+
+        public bool IsFirstElement() => Model.Elements.Count == 0;
+
+        private void UpdateElementsPositions()
+        {
+            foreach (var element in activeElementControllers)
+            {
+                var elementView = element.View;
+                var rt = elementView.GetComponent<RectTransform>();
+
+                var model = element.Model;
+
+                if (Model.BasePosition != null)
+                {
+                    var y = Model.BasePosition.Value.y;
+                    var x = Model.BasePosition.Value.x + model.HorizontalOffset;
+                    for (var j = 0; j < model.Index; j++)
+                    {
+                        y += Model.Elements[j].ElementHeight;
+                    }
+
+                    var firstView = activeElementControllers[0].View;
+                    var firstRt = firstView.GetComponent<RectTransform>();
+                    var pivotY = firstRt.pivot.y;
+                    var offset = model.ElementHeight * pivotY;
+
+                    var posY = y - offset;
+
+                    rt.localPosition = new Vector3(x, posY, 0);
+                }
+            }
+        }
+
+        private void UpdateView()
+        {
+            ClearElements();
+
+            foreach (var elementModel in Model.Elements)
+            {
+                var elementView = elementPool.Get();
+                elementView.transform.SetParent(View.ElementsContainer, false);
+                elementView.gameObject.SetActive(true);
+
+                var elementController = new TowerElementController(elementModel, elementView);
+                elementController.Initialize(dragStartHandler);
+                elementView.Initialize(elementController);
+
+                activeElementControllers.Add(elementController);
+            }
+
+            UpdateElementsPositions();
+        }
+
+        private void ClearElements()
+        {
+            foreach (var controller in activeElementControllers.Where(controller => controller.View != null))
+            {
+                controller.View.gameObject.SetActive(false);
+                elementPool.ReturnToPool(controller.View);
+            }
+
+            activeElementControllers.Clear();
+        }
+
+        protected override void OnModelChanged()
+        {
+            base.OnModelChanged();
+            UpdateView();
+        }
+    }
+}
+
+// === File: TowerContainerModel.cs ===
+using System.Collections.Generic;
+using System.Linq;
+using Core;
+using UnityEngine;
+using Zones.DropZones.Tower.TowerElement;
+
+namespace Zones.DropZones.Tower
+{
+    public class TowerContainerModel : IModel
+    {
+        private readonly List<TowerElementModel> elements = new();
+        public IReadOnlyList<TowerElementModel> Elements => elements;
+        public Vector3? BasePosition { get; set; }
+        public float CurrentHeight
+        {
+            get
+            {
+                return elements.Sum(element => element.ElementHeight);
+            }
+        }
+        public int ElementCount => elements.Count;
+        internal void AddElementInternal(TowerElementModel element) => elements.Add(element);
+
+        internal void RemoveElementAtInternal(int index) => elements.RemoveAt(index);
+
+        internal TowerElementModel GetElementAt(int index) => elements[index];
+
+        internal void SetElementAt(int index, TowerElementModel element) => elements[index] = element;
+    }
+}
+
+// === File: TowerContainerView.cs ===
+using Core;
+using PrimeTween;
+using UnityEngine;
+using System.Collections.Generic;
+using Zones.DropZones.Tower.TowerElement;
+
+namespace Zones.DropZones.Tower
+{
+    public class TowerContainerView : View
+    {
+        [SerializeField] private Transform elementsContainer;
+        public Transform ElementsContainer => elementsContainer;
+    }
+}
+
+// === File: TowerElementController.cs ===
+using PrimeTween;
+using Services.DragService;
+using UnityEngine;
+using UnityEngine.EventSystems;
+
+namespace Zones.DropZones.Tower.TowerElement
+{
+    public class TowerElementController
+    {
+        public TowerElementModel Model { get; }
+        public TowerElementView View { get; }
+        private IDragStartHandler dragStartHandler;
+
+        public TowerElementController(TowerElementModel model, TowerElementView view)
+        {
+            Model = model;
+            View = view;
+        }
+
+        public void Initialize(IDragStartHandler dragStartHandler)
+        {
+            this.dragStartHandler = dragStartHandler;
+            View.Initialize(this);
+            View.SetSprite(Model.ElementType.Sprite);
+        }
+
+        public void OnDragStart(PointerEventData eventData)
+        {
+            dragStartHandler?.OnDragStart(Model, View, eventData);
+            View.SetTransparency(0.5f);
+        }
+    }
+}
+
+// === File: TowerElementModel.cs ===
+using Element;
+
+namespace Zones.DropZones.Tower.TowerElement
+{
+    public class TowerElementModel : ElementModel
+    {
+        public float HorizontalOffset;
+        public int Index;
+        public float ElementHeight;
+    }
+}
+
+// === File: TowerElementView.cs ===
+using Element;
+using UnityEngine.EventSystems;
+
+namespace Zones.DropZones.Tower.TowerElement
+{
+    public class TowerElementView : ContainerElementView
+    {
+        private TowerElementController elementController;
+
+        public void Initialize(TowerElementController controller)
+        {
+            elementController = controller;
+        }
+
+        public override void OnBeginDrag(PointerEventData eventData)
+        {
+            elementController?.OnDragStart(eventData);
+        }
+    }
+}
+
+// === File: ScrollContainerController.cs ===
+using Core;
+using System;
+using UnityEngine;
+using Services.DragService;
+using System.Collections.Generic;
+using Element;
+using Services.PoolService;
+using Zones.ScrollArea.ScrollElement;
+
+namespace Zones.ScrollArea
+{
+    public class ScrollContainerController : Controller<ScrollContainerModel, ScrollContainerView>
+    {
+        private readonly ObjectPool<ScrollElementView> elementPool;
+        private IDragStartHandler dragStartHandler;
+        private readonly Func<ElementType, ScrollElementView> elementFactory;
+        private readonly List<ScrollElementView> activeElements = new();
+
+        public ScrollContainerController(ScrollContainerModel model, ScrollContainerView view,
+            IDragStartHandler dragStartHandler,
+            ObjectPool<ScrollElementView> elementPool,
+            Func<ElementType, ScrollElementView> elementFactory) : base(model, view)
+        {
+            this.elementPool = elementPool;
+            this.elementFactory = elementFactory;
+            RefreshElements();
+        }
+
+        public void Initialize(IDragStartHandler dragStartHandler)
+        {
+            this.dragStartHandler = dragStartHandler;
+        }
+        
+        protected override void OnModelChanged()
+        {
+            base.OnViewChanged();
+            RefreshElements();
+        }
+
+        private void RefreshElements()
+        {
+            ClearElements();
+            if (Model?.ElementsScroll == null || elementFactory == null)
+            {
+                Debug.LogError("Null reference in RefreshElements");
+                return;
+            }
+
+            foreach (var elementModel in Model.ElementsScroll)
+            {
+                var elementView = elementFactory(elementModel.ElementType);
+                elementView.transform.SetParent(View.transform, false);
+                activeElements.Add(elementView);
+            }
+        }
+
+
+        private void ClearElements()
+        {
+            if (activeElements.Count <= 0)
+                return;
+
+            foreach (var ev in activeElements)
+            {
+                elementPool.ReturnToPool(ev);
+            }
+
+            activeElements.Clear();
+        }
+    }
+}
+
+// === File: ScrollContainerModel.cs ===
+using System.Collections.Generic;
+using Core;
+using Zones.ScrollArea.ScrollElement;
+
+namespace Zones.ScrollArea
+{
+    public class ScrollContainerModel : IModel
+    {
+        public List<ScrollElementModel> ElementsScroll = new();
+    }
+}
+
+// === File: ScrollContainerView.cs ===
+using System;
+using Core;
+
+namespace Zones.ScrollArea
+{
+    public class ScrollContainerView : View
+    {
+        
+    }
+}
+
+// === File: ScrollElementController.cs ===
+using Core;
+using Services.DragService;
+using UnityEngine.EventSystems;
+
+namespace Zones.ScrollArea.ScrollElement
+{
+    public class ScrollElementController : Controller<ScrollElementModel, ScrollElementView>
+    {
+        private IDragStartHandler dragStartHandler;
+
+        public ScrollElementController(ScrollElementModel model, ScrollElementView view) : base(model, view)
+        {
+        }
+
+        public void Initialize(IDragStartHandler dragStartHandler)
+        {
+            this.dragStartHandler = dragStartHandler;
+            View.Initialize(this);
+            View.SetSprite(Model.ElementType.Sprite);
+        }
+
+        public void OnDragStart(PointerEventData eventData)
+        {
+            dragStartHandler?.OnDragStart(Model, View, eventData);
+            View.SetTransparency(0.5f);
+        }
+    }
+}
+
+// === File: ScrollElementModel.cs ===
+using Element;
+
+namespace Zones.ScrollArea.ScrollElement
+{
+    public class ScrollElementModel : ElementModel
+    {
+        
+    }
+}
+
+// === File: ScrollElementView.cs ===
+using Element;
+using UnityEngine;
+using UnityEngine.EventSystems;
+
+namespace Zones.ScrollArea.ScrollElement
+{
+    public class ScrollElementView : ContainerElementView
+    {
+        private ScrollElementController elementController;
+
+        public void Initialize(ScrollElementController controller)
+        {
+            elementController = controller;
+        }
+
+        public override void OnBeginDrag(PointerEventData eventData)
+        {
+            elementController?.OnDragStart(eventData);
+        }
+    }
+}
+
+// === Directory Structure ===
+// List of all directories (including empty) with relative paths from the selected folder:
+// ./
+// Core/
+// Editor/
+// Element/
+// Services/
+// Services/ConfigProvider/
+// Services/DragService/
+// Services/FactoryService/
+// Services/LocalizationService/
+// Services/NotificationService/
+// Services/PersistentService/
+// Services/PoolService/
+// Services/SaveLoadService/
+// Zones/
+// Zones/DropZones/
+// Zones/DropZones/DropRules/
+// Zones/DropZones/Hole/
+// Zones/DropZones/Tower/
+// Zones/DropZones/Tower/TowerElement/
+// Zones/ScrollArea/
+// Zones/ScrollArea/ScrollElement/
+
+// === File Structure ===
+// List of all .cs files with relative paths from the selected folder:
+// GameConfig.cs
+// GameConfigEditor.cs
+// GameInstaller.cs
+// Core/Controller.cs
+// Core/IController.cs
+// Core/IModel.cs
+// Core/View.cs
+// Element/ContainerElementView.cs
+// Element/ElementModel.cs
+// Element/ElementType.cs
+// Element/ElementView.cs
+// Services/ConfigProvider/IConfigProvider.cs
+// Services/DragService/DragController.cs
+// Services/DragService/DraggingElementModel.cs
+// Services/DragService/DraggingElementView.cs
+// Services/DragService/DragHandler.cs
+// Services/DragService/IDragStartHandler.cs
+// Services/DragService/IDropZone.cs
+// Services/FactoryService/FactoryService.cs
+// Services/FactoryService/IFactoryService.cs
+// Services/LocalizationService/ILocalizationService.cs
+// Services/LocalizationService/UnityLocalizationService.cs
+// Services/NotificationService/NotificationService.cs
+// Services/NotificationService/NotificationView.cs
+// Services/PoolService/ObjectPool.cs
+// Zones/DropZones/DropRules/DropRules.cs
+// Zones/DropZones/DropRules/IDropRule.cs
+// Zones/DropZones/Hole/HoleController.cs
+// Zones/DropZones/Hole/HoleModel.cs
+// Zones/DropZones/Hole/HoleView.cs
+// Zones/DropZones/Tower/TowerContainerController.cs
+// Zones/DropZones/Tower/TowerContainerModel.cs
+// Zones/DropZones/Tower/TowerContainerView.cs
+// Zones/DropZones/Tower/TowerElement/TowerElementController.cs
+// Zones/DropZones/Tower/TowerElement/TowerElementModel.cs
+// Zones/DropZones/Tower/TowerElement/TowerElementView.cs
+// Zones/ScrollArea/ScrollContainerController.cs
+// Zones/ScrollArea/ScrollContainerModel.cs
+// Zones/ScrollArea/ScrollContainerView.cs
+// Zones/ScrollArea/ScrollElement/ScrollElementController.cs
+// Zones/ScrollArea/ScrollElement/ScrollElementModel.cs
+// Zones/ScrollArea/ScrollElement/ScrollElementView.cs
+

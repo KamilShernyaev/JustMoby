@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3abeab61b68e4405b062c802ec4030cb, type: 3}
+  m_Name: GameConfig
+  m_EditorClassIdentifier: 
+  availableTypes:
+  - ID: Rectangle 16
+    Sprite: {fileID: 21300000, guid: 523bede50c9b90d42a6c69fa7ef1dbad, type: 3}
+  - ID: Rectangle 9
+    Sprite: {fileID: 21300000, guid: 13927326af7171a48ba043ce5d164a46, type: 3}
+  - ID: Group 31129
+    Sprite: {fileID: 21300000, guid: ae52a874a527ace4c905694fba012f6e, type: 3}
+  - ID: Rectangle 14-1
+    Sprite: {fileID: 21300000, guid: d984c41c9311f9b4da84f38f2625f731, type: 3}
+  - ID: Group 31125
+    Sprite: {fileID: 21300000, guid: 8af17f8223d129343870d448f9a3a7c2, type: 3}
+  - ID: Rectangle 17
+    Sprite: {fileID: 21300000, guid: 65f61b478fac6ff42b917b97e32b5e76, type: 3}
+  - ID: Rectangle 9-1
+    Sprite: {fileID: 21300000, guid: 9eaf08accdc05504d8a0b4d4dd4daa70, type: 3}
+  - ID: Rectangle 11-1
+    Sprite: {fileID: 21300000, guid: c3f9b909137be714c9929c0973f6accf, type: 3}
+  - ID: Rectangle 15
+    Sprite: {fileID: 21300000, guid: 51afb94a629ceb24f9b3403745f73f15, type: 3}
+  - ID: Group 31119
+    Sprite: {fileID: 21300000, guid: bab5452a4be42e844a138a202b294712, type: 3}
+  - ID: Rectangle 16-1
+    Sprite: {fileID: 21300000, guid: 8a9893b5edf875d4784687d25c81a932, type: 3}
+  - ID: Rectangle 8-1
+    Sprite: {fileID: 21300000, guid: 19d501e553593df4d8f9f94816fe8afe, type: 3}
+  - ID: Rectangle 12-1
+    Sprite: {fileID: 21300000, guid: 79c0ee47cbf58fd48bc09d3951f0ec2d, type: 3}
+  - ID: Rectangle 10
+    Sprite: {fileID: 21300000, guid: c6154e05068665d4a99811130c487272, type: 3}
+  - ID: Rectangle 14
+    Sprite: {fileID: 21300000, guid: fc3d7a1b05984594eb106f6cdf260416, type: 3}
+  - ID: Rectangle 11
+    Sprite: {fileID: 21300000, guid: 2fc7caf8828d27349a85c4f7d6745212, type: 3}
+  - ID: Rectangle 10-1
+    Sprite: {fileID: 21300000, guid: 7a33f1f91ad4dda4fb39e970956f4429, type: 3}
+  - ID: Rectangle 13-1
+    Sprite: {fileID: 21300000, guid: b70275ed0414aab4c897f06a05046b56, type: 3}
+  - ID: Rectangle 18
+    Sprite: {fileID: 21300000, guid: 75ba535063b50c04681ca825c595babe, type: 3}
+  - ID: Group 31122
+    Sprite: {fileID: 21300000, guid: 464413a571d75f443bc66f6e003a75e5, type: 3}
+  - ID: Rectangle 13
+    Sprite: {fileID: 21300000, guid: 38e3465b948cb834ab63ab5ff042dab7, type: 3}
+  - ID: Rectangle 12
+    Sprite: {fileID: 21300000, guid: 9f9fd7c8f8ce59f4fb73c15d6f3b4406, type: 3}
+  - ID: Rectangle 15-1
+    Sprite: {fileID: 21300000, guid: 20aa6c80e20da7f44bd8d251f98e2a5e, type: 3}
+  - ID: Rectangle 8
+    Sprite: {fileID: 21300000, guid: fb59113a7ffa80f4fb33df62531057fc, type: 3}
+  bottomCubeCount: 24
