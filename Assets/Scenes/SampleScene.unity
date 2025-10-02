@@ -643,7 +643,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: -40, y: -40}
+  m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1368377836
 MonoBehaviour:
@@ -706,6 +706,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1423641278}
   - component: {fileID: 1423641277}
+  - component: {fileID: 1423641279}
   m_Layer: 0
   m_Name: GameInstaller
   m_TagString: Untagged
@@ -730,15 +731,15 @@ MonoBehaviour:
   autoRun: 1
   autoInjectGameObjects:
   - {fileID: 522360011}
-  scrollElementViewPrefab: {fileID: 1268461825709154157, guid: 5f61731d94abe4a49830333e61d69f8d, type: 3}
-  scrollContainerView: {fileID: 1511114087}
+  - {fileID: 1423641276}
+  containerElementViewPrefab: {fileID: 7921682070412690753, guid: 5f61731d94abe4a49830333e61d69f8d, type: 3}
   draggingElementViewPrefab: {fileID: 1845048338861698348, guid: 2d4cea92bdf764447923dbb8fcdabfe3, type: 3}
-  gameConfig: {fileID: 11400000, guid: a4b528e97869575498ce2fa62868f1a3, type: 2}
   holeViewPrefab: {fileID: 1471071872}
-  towerContainerView: {fileID: 1368377838}
-  towerElementViewPrefab: {fileID: 3499993776751611205, guid: e0d26bd39cae1fc43aaa32aca546b3ef, type: 3}
-  canvas: {fileID: 522360014}
   notificationViewPrefab: {fileID: 2004223737}
+  scrollContainerView: {fileID: 1511114087}
+  towerContainerView: {fileID: 1368377838}
+  canvas: {fileID: 522360014}
+  gameConfig: {fileID: 11400000, guid: a4b528e97869575498ce2fa62868f1a3, type: 2}
 --- !u!4 &1423641278
 Transform:
   m_ObjectHideFlags: 0
@@ -754,6 +755,18 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1423641279
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1423641276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5fb3d1cc1e3ad8b4582c6c67afcbf640, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &1471071868
 GameObject:
   m_ObjectHideFlags: 0
@@ -789,8 +802,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.2}
   m_AnchorMax: {x: 0.5, y: 0.2}
-  m_AnchoredPosition: {x: 0, y: -46}
-  m_SizeDelta: {x: 450, y: 156}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 763.0493, y: 260.4401}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1471071870
 MonoBehaviour:

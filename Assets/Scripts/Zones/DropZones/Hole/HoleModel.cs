@@ -8,11 +8,16 @@ namespace Zones.DropZones.Hole
         public Vector3 Position { get; set; }
         public Vector2 EllipseSize { get; set; }
 
-        public bool IsInsideEllipse(Vector3 point)
+        public bool IsPointInsideEllipse(Vector2 point)
         {
-            var relative = new Vector2(point.x - Position.x, point.y - Position.y);
-            return (relative.x * relative.x) / (EllipseSize.x * EllipseSize.x) +
-                (relative.y * relative.y) / (EllipseSize.y * EllipseSize.y) <= 1f;
+            var center = new Vector2(Position.x, Position.y);
+            var halfSize = EllipseSize / 2f;
+
+            var delta = point - center;
+            var normX = delta.x / halfSize.x;
+            var normY = delta.y / halfSize.y;
+
+            return (normX * normX + normY * normY) <= 1f;
         }
     }
 }

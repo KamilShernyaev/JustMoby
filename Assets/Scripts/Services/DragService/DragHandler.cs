@@ -17,8 +17,7 @@ namespace Services.DragService
 
         public void OnDragStart(ElementModel elementModel, ElementView elementView, PointerEventData eventData)
         {
-            draggingController.StartDrag(elementModel, eventData);
+            draggingController.StartDrag(elementModel, elementView, eventData);
         }
-        
     }
 }

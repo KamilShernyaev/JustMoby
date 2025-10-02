@@ -18,13 +18,7 @@ namespace Services.LocalizationService
 
             var handle = localizedString.GetLocalizedStringAsync();
 
-            handle.Completed += op =>
-            {
-                if (op.Status == AsyncOperationStatus.Succeeded)
-                    tcs.SetResult(op.Result);
-                else
-                    tcs.SetResult(key);
-            };
+            handle.Completed += op => { tcs.SetResult(op.Status == AsyncOperationStatus.Succeeded ? op.Result : key); };
 
             return tcs.Task;
         }

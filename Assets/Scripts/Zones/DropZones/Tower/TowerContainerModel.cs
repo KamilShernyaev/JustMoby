@@ -13,20 +13,53 @@ namespace Zones.DropZones.Tower
     {
         private readonly List<TowerElementModel> elements = new();
 
-        public event Action OnModelChanged;
         public IReadOnlyList<TowerElementModel> Elements => elements;
-        public Vector3? BasePosition { get; set; }
-
+        public Vector2 BasePosition { get; set; }
         public float CurrentHeight => elements.Sum(element => element.ElementHeight);
-
         public int ElementCount => elements.Count;
-        internal void AddElementInternal(TowerElementModel element) => elements.Add(element);
 
-        internal void RemoveElementAtInternal(int index) => elements.RemoveAt(index);
+        public void AddElement(TowerElementModel element)
+        {
+            element.Index = elements.Count;
+            elements.Add(element);
+        }
 
-        internal TowerElementModel GetElementAt(int index) => elements[index];
+        public void RemoveElementAt(int index)
+        {
+            elements.RemoveAt(index);
+            for (var i = 0; i < elements.Count; i++)
+            {
+                elements[i].Index = i;
+            }
+        }
 
-        internal void SetElementAt(int index, TowerElementModel element) => elements[index] = element;
+        public TowerElementModel GetElementAt(int index) => elements[index];
+
+        public void SetElementAt(int index, TowerElementModel element) => elements[index] = element;
+
+        public Vector3 GetElementPosition(int index, float pivotY = 0.5f)
+        {
+            var y = BasePosition.y;
+            var x = BasePosition.x + elements[index].HorizontalOffset;
+
+            for (var i = 0; i < index; i++)
+            {
+                y += elements[i].ElementHeight;
+            }
+
+            var offset = elements[index].ElementHeight * pivotY;
+            var posY = y - offset;
+
+            return new Vector3(x, posY, 0);
+        }
+
+        public bool CanAddElement(float newElementHeight, float availableHeight)
+        {
+            if (elements.Count == 0)
+                return true;
+
+            return (availableHeight - CurrentHeight) >= newElementHeight;
+        }
 
         public TowerSaveData ToSaveData()
         {
@@ -42,9 +75,7 @@ namespace Zones.DropZones.Tower
                 });
             }
 
-            data.BasePosition = BasePosition.HasValue
-                ? new SerializableVector3(BasePosition.Value)
-                : new SerializableVector3(Vector3.zero);
+            data.BasePosition = new SerializableVector3(BasePosition);
 
             return data;
         }
@@ -58,7 +89,8 @@ namespace Zones.DropZones.Tower
                 var type = availableTypes.FirstOrDefault(t => t.ID == savedElement.ElementTypeID);
                 if (string.IsNullOrEmpty(type.ID))
                 {
-                    Debug.LogWarning($"ElementType with ID {savedElement.ElementTypeID} not found in available types.");
+                    Debug.LogWarning(
+                        $"ElementType with ID {savedElement.ElementTypeID} not found in available types. Пропускаем элемент.");
                     continue;
                 }
 
@@ -72,10 +104,8 @@ namespace Zones.DropZones.Tower
 
                 elements.Add(element);
             }
-
+            
             BasePosition = data.BasePosition.ToVector3();
-
-            OnModelChanged?.Invoke();
         }
     }
 }

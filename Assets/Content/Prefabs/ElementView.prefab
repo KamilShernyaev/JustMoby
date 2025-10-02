@@ -12,10 +12,10 @@ GameObject:
   - component: {fileID: 4120254179661134757}
   - component: {fileID: 6435501972406118449}
   - component: {fileID: 3592454880830171939}
-  - component: {fileID: 1268461825709154157}
   - component: {fileID: 7536056470339484346}
+  - component: {fileID: 7921682070412690753}
   m_Layer: 0
-  m_Name: ScrollElementView
+  m_Name: ElementView
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -35,8 +35,8 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0.5, y: 0}
+  m_AnchorMax: {x: 0.5, y: 0}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 80, y: 80}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -90,20 +90,6 @@ CanvasGroup:
   m_Interactable: 1
   m_BlocksRaycasts: 1
   m_IgnoreParentGroups: 0
---- !u!114 &1268461825709154157
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2088484424952824024}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7978ed8a93a14cb7aff62cc8ec12fad7, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  image: {fileID: 6435501972406118449}
-  canvasGroup: {fileID: 3592454880830171939}
 --- !u!114 &7536056470339484346
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -124,3 +110,17 @@ MonoBehaviour:
   m_FlexibleWidth: -1
   m_FlexibleHeight: -1
   m_LayoutPriority: 1
+--- !u!114 &7921682070412690753
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2088484424952824024}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1e63cc2526844c9a87b9a2198935ae2f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  image: {fileID: 6435501972406118449}
+  canvasGroup: {fileID: 3592454880830171939}

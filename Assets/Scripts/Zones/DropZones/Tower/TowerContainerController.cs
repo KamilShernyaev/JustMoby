@@ -6,23 +6,23 @@ using Services.DragService;
 using Services.NotificationService;
 using Services.PoolService;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using Zones.DropZones.DropRules;
 using Zones.DropZones.Tower.TowerElement;
+using PrimeTween;
 
 namespace Zones.DropZones.Tower
 {
     public class TowerContainerController : Controller<TowerContainerModel, TowerContainerView>, IDropZone
     {
-        private const float MaxHorizontalOffset = 50f;
-
-        private readonly IReadOnlyList<IDropRule> dropRules;
-        private readonly ObjectPool<TowerElementView> elementPool;
-        private readonly NotificationService notificationService;
-        private readonly List<TowerElementController> activeElementControllers = new();
         private IDragStartHandler dragStartHandler;
+        private readonly IReadOnlyList<IDropRule> dropRules;
+        private readonly NotificationService notificationService;
+        private readonly ObjectPool<ElementView> elementPool;
+        private readonly List<(TowerElementModel model, ElementView view)> activeElements = new();
 
         public TowerContainerController(IReadOnlyList<IDropRule> dropRules, TowerContainerModel model,
-            TowerContainerView view, ObjectPool<TowerElementView> elementPool,
+            TowerContainerView view, ObjectPool<ElementView> elementPool,
             NotificationService notificationService) : base(model, view)
         {
             this.dropRules = dropRules;
@@ -36,16 +36,41 @@ namespace Zones.DropZones.Tower
             elementPool.PreWarm(20, View.ElementsContainer);
         }
 
-        public void Initialize()
+        public void LoadFromSavedData()
         {
-            Model.OnModelChanged += OnModelChanged;
-            UpdateView();
+            ClearActiveElements();
+            for (int i = 0; i < Model.ElementCount; i++)
+            {
+                var m = Model.GetElementAt(i);
+                var view = elementPool.Get();
+                view.SetSprite(m.ElementType.Sprite);
+                view.transform.SetParent(View.ElementsContainer, false);
+                view.OnBeginDragEvent += eventData => OnElementBeginDrag(m, view, eventData);
+                view.OnDragEvent += eventData => OnElementDrag(m, view, eventData);
+                view.OnEndDragEvent += eventData => OnElementEndDrag(m, view, eventData);
+                view.OnRemoveRequested += RemoveElement;
+                activeElements.Add((m, view));
+            }
+            UpdateElementsPositions();
+        }
+
+        private void ClearActiveElements()
+        {
+            foreach (var (_, v) in activeElements)
+            {
+                elementPool.ReturnToPool(v);
+            }
+            activeElements.Clear();
         }
 
         public bool TryDropElement(ElementModel elementModel, ElementView elementView, Vector3 dropWorldPosition)
         {
-            if (Model == null || View == null) return false;
+            if (elementModel is DraggingElementModel { OriginalModel: TowerElementModel })
+            {
+                return true;
+            }
 
+            if (Model == null || View == null) return false;
             if (!dropRules.All(r => r.CanAddElement(elementModel, Model)))
             {
                 return false;
@@ -53,14 +78,13 @@ namespace Zones.DropZones.Tower
 
             var rectTransform = View.GetComponent<RectTransform>();
             if (rectTransform == null) return false;
-
             if (!IsInsideZone(dropWorldPosition))
             {
                 _ = notificationService.ShowNotification("MissCube");
                 return false;
             }
 
-            if (IsFirstElement())
+            if (Model.Elements.Count == 0)
             {
                 if (RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, dropWorldPosition, null,
                         out var localPoint))
@@ -78,156 +102,117 @@ namespace Zones.DropZones.Tower
             else
             {
                 var zoneTopY = rectTransform.rect.yMax;
-                var baseY = Model.BasePosition?.y ?? 0f;
+                var baseY = Model.BasePosition.y;
                 var availableHeight = zoneTopY - baseY;
-
                 var rect = elementView.GetComponent<RectTransform>();
                 var newElementHeight = rect != null ? rect.rect.height * elementView.transform.localScale.y : 0f;
-
-                if (availableHeight - Model.CurrentHeight < newElementHeight)
+                if (!Model.CanAddElement(newElementHeight, availableHeight))
                 {
                     _ = notificationService.ShowNotification("HeightLimit");
                     return false;
                 }
             }
 
-            AddElement(elementModel, elementView);
+            AddElementInternal(elementModel.ElementType);
             _ = notificationService.ShowNotification("PlaceCube");
-
             return true;
         }
-
 
         public bool IsInsideZone(Vector3 screenPosition)
         {
             if (View == null) return false;
             var rectTransform = View.GetComponent<RectTransform>();
             if (rectTransform == null) return false;
-
-            if (IsFirstElement())
+            if (Model.Elements.Count == 0)
             {
                 return RectTransformUtility.RectangleContainsScreenPoint(rectTransform, screenPosition);
             }
 
-            var topElementController = activeElementControllers.LastOrDefault();
-            if (topElementController == null) return false;
-            var topRect = topElementController.View.GetComponent<RectTransform>();
+            if (activeElements.Count == 0) return false;
+            var topView = activeElements.Last().view;
+            var topRect = topView.GetComponent<RectTransform>();
             return topRect != null && RectTransformUtility.RectangleContainsScreenPoint(topRect, screenPosition);
         }
 
-        private void AddElementInternal(ElementModel elementModel, ElementView elementView)
+        private void AddElementInternal(ElementType elementType)
         {
-            var rectTransform = elementView.GetComponent<RectTransform>();
-            var horizontalOffset = Random.Range(rectTransform.rect.width * -0.5f, rectTransform.rect.width * 0.5f);
-            var index = Model.ElementCount;
-
-            var elementHeight = rectTransform != null
-                ? rectTransform.rect.height * elementView.transform.localScale.y
-                : 0f;
-
-            var towerElement = new TowerElementModel
+            var view = elementPool.Get();
+            view.SetSprite(elementType.Sprite);
+            view.transform.SetParent(View.ElementsContainer, false);
+            var rect = view.GetComponent<RectTransform>();
+            if (rect == null)
             {
-                ElementType = elementModel.ElementType,
-                HorizontalOffset = horizontalOffset,
-                Index = index,
-                ElementHeight = elementHeight
-            };
-
-            Model.AddElementInternal(towerElement);
-
-            var towerElementView = elementPool.Get();
-
-            if (Model.Elements.Count == 1 && Model.BasePosition.HasValue)
-            {
-                towerElementView.transform.localPosition = Model.BasePosition.Value;
-            }
-            else
-            {
-                towerElementView.transform.localPosition = rectTransform.localPosition;
+                Debug.LogError("RectTransform not found on element view");
+                elementPool.ReturnToPool(view);
+                return;
             }
 
-            var elementController = new TowerElementController(towerElement, towerElementView);
-            elementController.Initialize(dragStartHandler);
-
-            towerElementView.Initialize(elementController);
-
-            activeElementControllers.Add(elementController);
-        }
-
-
-        public void AddElement(ElementModel elementModel, ElementView elementView)
-        {
-            AddElementInternal(elementModel, elementView);
+            var elementWidth = rect.rect.width * view.transform.localScale.x;
+            var elementHeight = rect.rect.height * view.transform.localScale.y;
+            
+            var model = TowerElementModel.Create(elementType, elementWidth);
+            model.ElementHeight = elementHeight;
+            Model.AddElement(model);
+            
+            view.OnBeginDragEvent += eventData => OnElementBeginDrag(model, view, eventData);
+            view.OnDragEvent += eventData => OnElementDrag(model, view, eventData);
+            view.OnEndDragEvent += eventData => OnElementEndDrag(model, view, eventData);
+            view.OnRemoveRequested += RemoveElement;
+            
+            activeElements.Add((model, view));
             UpdateElementsPositions();
         }
 
-        public bool IsFirstElement() => Model.Elements.Count == 0;
+        private void RemoveElement(ElementModel elementModel)
+        {
+            var index = activeElements.FindIndex(p => p.model == elementModel);
+            if (index < 0) return;
+
+            (_, var v) = activeElements[index];
+            activeElements.RemoveAt(index);
+            Model.RemoveElementAt(index);
+            elementPool.ReturnToPool(v);
+
+            AnimateDropDown(index);
+        }
+
+        private void OnElementBeginDrag(TowerElementModel model, ElementView view, PointerEventData eventData)
+        {
+            dragStartHandler?.OnDragStart(model, view, eventData);
+        }
+
+        private void OnElementEndDrag(TowerElementModel model, ElementView view, PointerEventData eventData)
+        {
+        }
+
+        private void OnElementDrag(TowerElementModel model, ElementView view, PointerEventData eventData)
+        {
+        }
+
+        private void AnimateDropDown(int startIndex)
+        {
+            const float duration = 0.5f;
+            for (var i = startIndex; i < activeElements.Count; i++)
+            {
+                var (_, view) = activeElements[i];
+                var rt = view.GetComponent<RectTransform>();
+                if (rt == null) continue;
+                var newPos = Model.GetElementPosition(i, rt.pivot.y);
+                Tween.LocalPosition(rt, newPos, duration, Ease.InOutQuad);
+            }
+        }
 
         private void UpdateElementsPositions()
         {
-            foreach (var element in activeElementControllers)
+            for (var i = 0; i < activeElements.Count; i++)
             {
-                var elementView = element.View;
-                var rt = elementView.GetComponent<RectTransform>();
-
-                var model = element.Model;
-
-                if (Model.BasePosition != null)
-                {
-                    var y = Model.BasePosition.Value.y;
-                    var x = Model.BasePosition.Value.x + model.HorizontalOffset;
-                    for (var j = 0; j < model.Index; j++)
-                    {
-                        y += Model.Elements[j].ElementHeight;
-                    }
-
-                    var firstView = activeElementControllers[0].View;
-                    var firstRt = firstView.GetComponent<RectTransform>();
-                    var pivotY = firstRt.pivot.y;
-                    var offset = model.ElementHeight * pivotY;
-
-                    var posY = y - offset;
-
-                    rt.localPosition = new Vector3(x, posY, 0);
-                }
+                (var model, var view) = activeElements[i];
+                model.Index = i;
+                var rt = view.GetComponent<RectTransform>();
+                if (rt == null) continue;
+                var pos = Model.GetElementPosition(i, rt.pivot.y);
+                rt.localPosition = pos;
             }
-        }
-
-        private void UpdateView()
-        {
-            ClearElements();
-
-            foreach (var elementModel in Model.Elements)
-            {
-                var elementView = elementPool.Get();
-                elementView.transform.SetParent(View.ElementsContainer, false);
-                elementView.gameObject.SetActive(true);
-
-                var elementController = new TowerElementController(elementModel, elementView);
-                elementController.Initialize(dragStartHandler);
-                elementView.Initialize(elementController);
-
-                activeElementControllers.Add(elementController);
-            }
-
-            UpdateElementsPositions();
-        }
-
-        private void ClearElements()
-        {
-            foreach (var controller in activeElementControllers.Where(controller => controller.View != null))
-            {
-                controller.View.gameObject.SetActive(false);
-                elementPool.ReturnToPool(controller.View);
-            }
-
-            activeElementControllers.Clear();
-        }
-
-        protected override void OnModelChanged()
-        {
-            base.OnModelChanged();
-            UpdateView();
         }
     }
 }

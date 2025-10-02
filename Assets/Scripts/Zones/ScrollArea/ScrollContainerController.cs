@@ -1,39 +1,34 @@
 using Core;
 using System;
-using UnityEngine;
 using Services.DragService;
 using System.Collections.Generic;
 using Element;
+using Services.ConfigProvider;
 using Services.PoolService;
+using UnityEngine.EventSystems;
 using Zones.ScrollArea.ScrollElement;
 
 namespace Zones.ScrollArea
 {
     public class ScrollContainerController : Controller<ScrollContainerModel, ScrollContainerView>
     {
-        private readonly ObjectPool<ScrollElementView> elementPool;
-        private IDragStartHandler dragStartHandler;
-        private readonly Func<ElementType, ScrollElementView> elementFactory;
-        private readonly List<ScrollElementView> activeElements = new();
+        private readonly IDragStartHandler dragStartHandler;
+        private readonly Func<ElementType, ElementView> elementFactory;
+        private readonly List<(ScrollElementModel model, ElementView view)> activeElements = new();
 
         public ScrollContainerController(ScrollContainerModel model, ScrollContainerView view,
-            IDragStartHandler dragStartHandler,
-            ObjectPool<ScrollElementView> elementPool,
-            Func<ElementType, ScrollElementView> elementFactory) : base(model, view)
+            IDragStartHandler dragStartHandler, Func<ElementType, ElementView> elementFactory,
+            IConfigProvider configProvider) : base(model, view)
         {
-            this.elementPool = elementPool;
             this.elementFactory = elementFactory;
+            this.dragStartHandler = dragStartHandler;
+            Model.InitializeElements(configProvider);
             RefreshElements();
         }
 
-        public void Initialize(IDragStartHandler dragStartHandler)
-        {
-            this.dragStartHandler = dragStartHandler;
-        }
-        
         protected override void OnModelChanged()
         {
-            base.OnViewChanged();
+            base.OnModelChanged();
             RefreshElements();
         }
 
@@ -48,23 +43,21 @@ namespace Zones.ScrollArea
             foreach (var elementModel in Model.ElementsScroll)
             {
                 var elementView = elementFactory(elementModel.ElementType);
+                elementView.SetSprite(elementModel.ElementType.Sprite);
                 elementView.transform.SetParent(View.transform, false);
-                activeElements.Add(elementView);
+                elementView.OnBeginDragEvent += eventData => OnElementBeginDrag(elementModel, elementView, eventData);
+                activeElements.Add((elementModel, elementView));
             }
         }
 
-
         private void ClearElements()
         {
-            if (activeElements.Count <= 0)
-                return;
-
-            foreach (var ev in activeElements)
-            {
-                elementPool.ReturnToPool(ev);
-            }
-
             activeElements.Clear();
+        }
+
+        private void OnElementBeginDrag(ScrollElementModel model, ElementView view, PointerEventData eventData)
+        {
+            dragStartHandler?.OnDragStart(model, view, eventData);
         }
     }
 }
