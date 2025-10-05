@@ -2,46 +2,47 @@ using UnityEngine.EventSystems;
 using Element;
 using System.Collections.Generic;
 using System.Linq;
+using Core;
 using UnityEngine;
-using PrimeTween;
+using Services.AnimationService;
+using Services.NotificationService;
 
 namespace Services.DragService
 {
-    public class DragController
+    public class DragController : Controller<DraggingElementModel, DraggingElementView>
     {
-        private readonly DraggingElementModel model;
-        private readonly DraggingElementView view;
         private readonly IReadOnlyList<IDropZone> dropZones;
-        private readonly NotificationService.NotificationService notificationService;
+        private readonly INotificationService notificationService;
+        private readonly IAnimationService animationService;
 
         public DragController(DraggingElementModel model, DraggingElementView view, IReadOnlyList<IDropZone> dropZones,
-            NotificationService.NotificationService notificationService)
+            INotificationService notificationService, IAnimationService animationService) : base(model, view)
+
         {
-            this.model = model;
-            this.view = view;
             this.dropZones = dropZones;
             this.notificationService = notificationService;
+            this.animationService = animationService;
 
-            view.OnDragEvent += eventData => OnDrag(model, view, eventData);
+            view.OnDragEvent += eventData => OnDrag(view, eventData);
             view.OnEndDragEvent += eventData => OnEndDrag(model, view, eventData);
             view.OnRemoveRequested += ViewOnOnRemoveRequested;
         }
 
         private void ViewOnOnRemoveRequested(ElementModel obj)
         {
-            model.OriginalView.OnRemove(model.OriginalModel);
+            Model.OriginalView.OnRemove(Model.OriginalModel);
         }
 
         public void StartDrag(ElementModel elementModel, ElementView elementView, PointerEventData eventData)
         {
-            model.ElementType = elementModel.ElementType;
-            model.OriginalModel = elementModel;
-            model.OriginalView = elementView;
-            view.Show(model.ElementType.Sprite, elementView.transform.position);
-            eventData.pointerDrag = view.gameObject;
+            Model.ElementType = elementModel.ElementType;
+            Model.OriginalModel = elementModel;
+            Model.OriginalView = elementView;
+            View.Show(Model.ElementType.Sprite, elementView.transform.position);
+            eventData.pointerDrag = View.gameObject;
         }
 
-        private void OnDrag(DraggingElementModel model, DraggingElementView view, PointerEventData eventData)
+        private void OnDrag(DraggingElementView view, PointerEventData eventData)
         {
             view.SetPosition(eventData.position);
         }
@@ -51,74 +52,54 @@ namespace Services.DragService
             var targetZone = dropZones.FirstOrDefault(zone => zone.IsInsideZone(eventData.position));
             if (targetZone == null)
             {
-                view.FadeOutAndHide(0.3f);
+                // Miss no zone: Fade out dragging + hide (no jump back)
+                animationService.PlayFade(view.transform, false, 0.3f, view.Hide);
                 _ = notificationService.ShowNotification("MissCube");
                 return;
             }
-
 
             Vector3 targetPosition = eventData.position;
-            if (targetZone is Zones.DropZones.Tower.TowerContainerController tower)
+            var startPosition = model.OriginalView.transform.position;
+            if (targetZone is Zones.DropZones.Hole.HoleController hole)
             {
-                var rectTransform = tower.View?.GetComponent<RectTransform>();
-                if (rectTransform != null && tower.Model.ElementCount > 0)
+                targetPosition = hole.View.HoleImage.rectTransform.position;
+                _ = notificationService.ShowNotification("DropHole");
+            }
+            else if (targetZone is Zones.DropZones.Tower.TowerContainerController tower)
+            {
+                if (tower.Model.ElementCount == 0)
                 {
-                    var topElement = tower.Model.GetElementAt(tower.Model.ElementCount - 1);
-                    var topPos = tower.Model.GetElementPosition(tower.Model.ElementCount - 1, 0.5f);
-                    RectTransformUtility.ScreenPointToWorldPointInRectangle(rectTransform, eventData.position, null,
-                        out var worldPos);
-                    targetPosition = new Vector3(worldPos.x, topPos.y + topElement.ElementHeight, worldPos.z);
+                    var rect = tower.View.GetComponent<RectTransform>().rect;
+                    targetPosition = new Vector3(tower.Model.BasePosition.x, rect.yMin, 0);
                 }
+                else
+                {
+                    var topIndex = tower.Model.ElementCount - 1;
+                    var topPos = tower.Model.GetElementPosition(topIndex, 0.5f);
+                    targetPosition = new Vector3(topPos.x + UnityEngine.Random.Range(-50f, 50f), topPos.y + 50f, 0);
+                }
+
+                _ = notificationService.ShowNotification("PlaceCube");
             }
 
-            var startPosition = model.OriginalView != null
-                ? model.OriginalView.transform.position
-                : view.transform.position;
-
-
-            var dropped = targetZone.TryDropElement(model, view, eventData.position);
+            var dropped = targetZone.TryDropElement(model.OriginalModel, model.OriginalView, eventData.position);
             if (!dropped)
             {
-                AnimateJumpToPosition(view, startPosition, targetPosition, () => { view.FadeOutAndHide(0.1f); });
-                _ = notificationService.ShowNotification("MissCube");
-            }
-            else
-            {
-                view.Hide();
-            }
-        }
-
-        private void AnimateJumpToPosition(DraggingElementView view, Vector3 startPosition, Vector3 targetPosition,
-            System.Action onComplete)
-        {
-            if (view == null)
-            {
-                Debug.LogWarning("DraggingElementView is null");
-                return;
-            }
-
-            var rectTransform = view.GetComponent<RectTransform>();
-            if (rectTransform == null)
-            {
-                Debug.LogWarning("RectTransform is null on DraggingElementView");
-                return;
-            }
-
-            view.SetAlpha(1);
-            var startPos2D = new Vector2(startPosition.x, startPosition.y);
-            var targetPos2D = new Vector2(targetPosition.x, targetPosition.y);
-            const float duration = 0.3f;
-
-            rectTransform.position = startPosition;
-
-            Tween.Custom(0f, 1f, duration, t =>
+                // Miss after zone: Fade out dragging + linear jump back (pool view) + hide
+                animationService.PlayFade(view.transform, false, 0.3f, () => // Fade dragging first
                 {
-                    var x = Mathf.Lerp(startPos2D.x, targetPos2D.x, t);
-                    var y = Mathf.Lerp(startPos2D.y, targetPos2D.y, t);
+                    // Linear jump back (visual copy from current to start)
+                    animationService.PlayJump(eventData.position, startPosition, model.ElementType.Sprite, 0.3f,
+                        view.Hide, arc: false); // Callback: Hide dragging (no extra fade)
+                });
+                _ = notificationService.ShowNotification("MissCube");
+                return;
+            }
 
-                    rectTransform.position = new Vector3(x, y, startPosition.z);
-                }, Ease.Linear)
-                .OnComplete(onComplete);
+            // Success: Unchanged
+            view.Hide();
+            animationService.PlayJump(startPosition, targetPosition, model.ElementType.Sprite, 0.5f,
+                () => model.OriginalView.OnRemove(model.OriginalModel));
         }
     }
 }

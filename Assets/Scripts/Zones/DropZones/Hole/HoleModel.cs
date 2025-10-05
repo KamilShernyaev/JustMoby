@@ -1,4 +1,3 @@
-using Core;
 using Core.MVC;
 using UnityEngine;
 
@@ -6,17 +5,15 @@ namespace Zones.DropZones.Hole
 {
     public class HoleModel : IModel
     {
-        public Vector3 Position { get; set; }
-        public Vector2 EllipseSize { get; set; }
+        public Vector2 EllipseSize;
 
-        public bool IsPointInsideEllipse(Vector2 point)
+        public bool IsPointInsideEllipse(Vector2 localPoint)
         {
-            var center = new Vector2(Position.x, Position.y);
             var halfSize = EllipseSize / 2f;
+            if (halfSize.x <= 0 || halfSize.y <= 0) return false;
 
-            var delta = point - center;
-            var normX = delta.x / halfSize.x;
-            var normY = delta.y / halfSize.y;
+            var normX = localPoint.x / halfSize.x;
+            var normY = localPoint.y / halfSize.y;
 
             return (normX * normX + normY * normY) <= 1f;
         }

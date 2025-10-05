@@ -1,21 +1,26 @@
 using System.Threading.Tasks;
+using Services.AnimationService;
 using Services.LocalizationService;
 using UnityEngine;
+using UnityEngine.Playables;
 
 namespace Services.NotificationService
 {
-    public class NotificationService
+    public class NotificationService : INotificationService
     {
-        private readonly ILocalizationService localizationService;
         private readonly NotificationView notificationView;
+        private readonly ILocalizationService localizationService;
+        private readonly IAnimationService animationService;
 
-        public NotificationService(ILocalizationService localizationService, NotificationView notificationView)
+        public NotificationService(ILocalizationService localizationService, NotificationView notificationView,
+            IAnimationService animationService)
         {
             this.localizationService = localizationService;
             this.notificationView = notificationView;
+            this.animationService = animationService;
         }
 
-        public async Task ShowNotification(string localizationKey, float duration = 2f)
+        public async Task ShowNotification(string localizationKey, float displayDuration = 2f)
         {
             if (string.IsNullOrEmpty(localizationKey))
             {
@@ -24,8 +29,19 @@ namespace Services.NotificationService
             }
 
             var localizedText = await localizationService.GetStringAsync(localizationKey);
+            notificationView.SetText(localizedText);
 
-            notificationView.Show(localizedText, duration);
+            animationService.PlayFade(notificationView.transform, true, 0.3f,
+                () =>
+                {
+                    PrimeTween.Tween.Delay(displayDuration).OnComplete(() =>
+                    {
+                        animationService.PlayFade(notificationView.transform, false, 0.3f,
+                            () => { notificationView.gameObject.SetActive(false); });
+                    });
+                });
+
+            notificationView.gameObject.SetActive(true);
         }
     }
 }

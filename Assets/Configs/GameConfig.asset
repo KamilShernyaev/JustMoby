@@ -62,3 +62,10 @@ MonoBehaviour:
   - ID: Rectangle 8
     Sprite: {fileID: 21300000, guid: fb59113a7ffa80f4fb33df62531057fc, type: 3}
   bottomCubeCount: 24
+  backgrounds:
+  - ZoneType: 1
+    Sprite: {fileID: 21300000, guid: 5e9994563ef2048478d286f506033c50, type: 3}
+  - ZoneType: 0
+    Sprite: {fileID: 21300000, guid: b18e0e9ba700481448093e4f7b9e0fd6, type: 3}
+  - ZoneType: 2
+    Sprite: {fileID: 21300000, guid: d2a0ff4f13f59a04abc8e8602dc6263f, type: 3}

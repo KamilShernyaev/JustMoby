@@ -1,4 +1,6 @@
+using Core;
 using Element;
+using UnityEngine;
 
 namespace Services.ConfigProvider
 {
@@ -6,5 +8,6 @@ namespace Services.ConfigProvider
     {
         ElementType[] AvailableTypes { get; }
         int BottomElementCount { get; }
+        Sprite GetBackgroundSprite(BackgroundZoneType zoneType);
     }
 }

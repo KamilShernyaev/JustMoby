@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 using System;
-using Core;
 using Core.MVC;
 using UnityEngine.UI;
 

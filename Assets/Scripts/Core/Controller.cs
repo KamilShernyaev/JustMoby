@@ -21,45 +21,55 @@ namespace Core
 
         public void SetModel(TModel model)
         {
+            if (model == null)
+            {
+                throw new ArgumentNullException(nameof(model), "Model is NULL in SetModel!");
+            }
             OnBeforeModelChanged();
             Model = model;
             OnModelChanged();
-        }
-
-        public void SetView(TView view)
-        {
-            OnBeforeViewChanged();
-            View = view;
-            OnViewChanged();
         }
 
         public void SetModel(object model)
         {
             if (model == null)
             {
-                SetModel(default(TModel));
+                SetModel(null);
                 return;
             }
 
             if (model is not TModel tModel)
             {
-                throw new ArgumentException("Wrong model type");
+                var error = $"Wrong model type: expected {typeof(TModel).Name}, got {model.GetType().Name}";
+                throw new ArgumentException(error);
             }
 
             SetModel(tModel);
+        }
+
+        public void SetView(TView view)
+        {
+            if (view == null)
+            {
+                throw new ArgumentNullException(nameof(view), "View is NULL in SetView!");
+            }
+            OnBeforeViewChanged();
+            View = view;
+            OnViewChanged();
         }
 
         public void SetView(object view)
         {
             if (view == null)
             {
-                SetView(default(TView));
+                SetView(null);
                 return;
             }
 
             if (view is not TView tView)
             {
-                throw new ArgumentException("Wrong view type");
+                var error = $"Wrong view type: expected {typeof(TView).Name}, got {view.GetType().Name}";
+                throw new ArgumentException(error);
             }
 
             SetView(tView);

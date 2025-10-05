@@ -1,10 +1,8 @@
-using Core;
-using Core.MVC;
 using UnityEngine;
 
 namespace Zones.DropZones.Tower
 {
-    public class TowerContainerView : View
+    public class TowerContainerView : ZoneView
     {
         [SerializeField] private Transform elementsContainer;
         public Transform ElementsContainer => elementsContainer;

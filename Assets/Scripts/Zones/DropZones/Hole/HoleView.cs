@@ -1,10 +1,12 @@
-using Core;
-using Core.MVC;
+using UnityEngine;
+using UnityEngine.UI;
 
 namespace Zones.DropZones.Hole
 {
-    public class HoleView : View
+    [RequireComponent(typeof(RectTransform))]
+    public class HoleView : ZoneView
     {
-        
+        [SerializeField] private Image holeImage;
+        public Image HoleImage => holeImage;
     }
 }

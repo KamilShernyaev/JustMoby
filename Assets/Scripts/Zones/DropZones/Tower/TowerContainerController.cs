@@ -10,6 +10,9 @@ using UnityEngine.EventSystems;
 using Zones.DropZones.DropRules;
 using Zones.DropZones.Tower.TowerElement;
 using PrimeTween;
+using Services.AnimationService;
+using Services.ConfigProvider;
+using VContainer;
 
 namespace Zones.DropZones.Tower
 {
@@ -17,17 +20,21 @@ namespace Zones.DropZones.Tower
     {
         private IDragStartHandler dragStartHandler;
         private readonly IReadOnlyList<IDropRule> dropRules;
-        private readonly NotificationService notificationService;
+        private readonly INotificationService notificationService;
         private readonly ObjectPool<ElementView> elementPool;
         private readonly List<(TowerElementModel model, ElementView view)> activeElements = new();
+        private readonly IAnimationService animationService;
 
         public TowerContainerController(IReadOnlyList<IDropRule> dropRules, TowerContainerModel model,
-            TowerContainerView view, ObjectPool<ElementView> elementPool,
-            NotificationService notificationService) : base(model, view)
+            TowerContainerView view, [Key("MainPool")] ObjectPool<ElementView> elementPool,
+            INotificationService notificationService, IConfigProvider configProvider,
+            IAnimationService animationService) : base(model, view)
         {
             this.dropRules = dropRules;
             this.elementPool = elementPool;
             this.notificationService = notificationService;
+            this.animationService = animationService;
+            View.SetBackground(configProvider.GetBackgroundSprite(BackgroundZoneType.Tower));
         }
 
         public void Initialize(IDragStartHandler dragStartHandler)
@@ -51,6 +58,7 @@ namespace Zones.DropZones.Tower
                 view.OnRemoveRequested += RemoveElement;
                 activeElements.Add((m, view));
             }
+
             UpdateElementsPositions();
         }
 
@@ -60,6 +68,7 @@ namespace Zones.DropZones.Tower
             {
                 elementPool.ReturnToPool(v);
             }
+
             activeElements.Clear();
         }
 
@@ -149,31 +158,31 @@ namespace Zones.DropZones.Tower
 
             var elementWidth = rect.rect.width * view.transform.localScale.x;
             var elementHeight = rect.rect.height * view.transform.localScale.y;
-            
             var model = TowerElementModel.Create(elementType, elementWidth);
             model.ElementHeight = elementHeight;
             Model.AddElement(model);
-            
             view.OnBeginDragEvent += eventData => OnElementBeginDrag(model, view, eventData);
             view.OnDragEvent += eventData => OnElementDrag(model, view, eventData);
             view.OnEndDragEvent += eventData => OnElementEndDrag(model, view, eventData);
             view.OnRemoveRequested += RemoveElement;
-            
             activeElements.Add((model, view));
-            UpdateElementsPositions();
+            animationService.PlayFade(view.transform, true, 0.2f); // Alpha 0→1 + scale
+            UpdateElementsPositions(); // Instant pos (no anim for add)
         }
+
 
         private void RemoveElement(ElementModel elementModel)
         {
             var index = activeElements.FindIndex(p => p.model == elementModel);
             if (index < 0) return;
-
             (_, var v) = activeElements[index];
-            activeElements.RemoveAt(index);
-            Model.RemoveElementAt(index);
-            elementPool.ReturnToPool(v);
-
-            AnimateDropDown(index);
+            animationService.PlayFade(v.transform, false, 0.2f, () =>
+            {
+                activeElements.RemoveAt(index);
+                Model.RemoveElementAt(index);
+                elementPool.ReturnToPool(v);
+                AnimateDropDown(index);
+            });
         }
 
         private void OnElementBeginDrag(TowerElementModel model, ElementView view, PointerEventData eventData)
@@ -191,15 +200,20 @@ namespace Zones.DropZones.Tower
 
         private void AnimateDropDown(int startIndex)
         {
-            const float duration = 0.5f;
-            for (var i = startIndex; i < activeElements.Count; i++)
+            if (startIndex >= activeElements.Count) return;
+            var targets = new Transform[activeElements.Count - startIndex];
+            var newPositions = new Vector3[targets.Length];
+            for (int i = 0; i < targets.Length; i++)
             {
-                var (_, view) = activeElements[i];
+                var globalIndex = startIndex + i;
+                (_, var view) = activeElements[globalIndex];
+                targets[i] = view.transform;
                 var rt = view.GetComponent<RectTransform>();
-                if (rt == null) continue;
-                var newPos = Model.GetElementPosition(i, rt.pivot.y);
-                Tween.LocalPosition(rt, newPos, duration, Ease.InOutQuad);
+                var pivotY = rt?.pivot.y ?? 0.5f;
+                newPositions[i] = Model.GetElementPosition(globalIndex, pivotY);
             }
+
+            animationService.PlayDropDown(targets, newPositions);
         }
 
         private void UpdateElementsPositions()
