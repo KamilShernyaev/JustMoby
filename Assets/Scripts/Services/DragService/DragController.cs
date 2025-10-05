@@ -90,7 +90,6 @@ namespace Services.DragService
                     animationService.PlayJump(currentDropLocalPos, startLocalPos, model.ElementType.Sprite, 0.3f,
                         view.Hide, arc: false);
                 });
-                _ = notificationService.ShowNotification("MissCube");
                 return;
             }
 
@@ -120,10 +119,9 @@ namespace Services.DragService
             var canvasRt = canvas.GetComponent<RectTransform>();
             if (canvasRt == null) return new Vector3(screenPos.x, screenPos.y, 0);
 
-            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRt, screenPos, null, out var localPos))
-                return new Vector3(localPos.x, localPos.y, 0);
-            Debug.LogWarning("DragController: ScreenToLocal failed (check Canvas mode) — fallback screen.");
-            return new Vector3(screenPos.x, screenPos.y, 0);
+            return RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRt, screenPos, null, out var localPos)
+                ? new Vector3(localPos.x, localPos.y, 0)
+                : new Vector3(screenPos.x, screenPos.y, 0);
         }
     }
 }

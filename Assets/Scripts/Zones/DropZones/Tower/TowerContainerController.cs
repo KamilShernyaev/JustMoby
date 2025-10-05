@@ -64,7 +64,11 @@ namespace Zones.DropZones.Tower
         {
             foreach (var (_, v) in activeElements)
             {
-                elementPool.ReturnToPool(v);
+                if (v != null)
+                {
+                    animationService.CancelAnimation(v.transform);
+                    elementPool.ReturnToPool(v);
+                }
             }
 
             activeElements.Clear();
@@ -85,6 +89,24 @@ namespace Zones.DropZones.Tower
 
             var rectTransform = View.GetComponent<RectTransform>();
             if (rectTransform == null) return false;
+
+            // Проверка высоты перед проверкой зоны
+            if (Model.Elements.Count > 0) // Проверяем высоту только если башня не пуста
+            {
+                var zoneTopY = rectTransform.rect.yMax;
+                var baseY = Model.BasePosition.y;
+                var availableHeight = zoneTopY - baseY;
+                var rect = elementView.GetComponent<RectTransform>();
+                var newElementHeight = rect != null ? rect.rect.height * elementView.transform.localScale.y : 0f;
+                if (!Model.CanAddElement(newElementHeight, availableHeight))
+                {
+                    Debug.Log(
+                        $"Cannot add element: newElementHeight={newElementHeight}, availableHeight={availableHeight}, CurrentHeight={Model.CurrentHeight}");
+                    _ = notificationService.ShowNotification("HeightLimit");
+                    return false;
+                }
+            }
+
             if (!IsInsideZone(dropWorldPosition))
             {
                 _ = notificationService.ShowNotification("MissCube");
@@ -103,19 +125,7 @@ namespace Zones.DropZones.Tower
                 }
                 else
                 {
-                    return false;
-                }
-            }
-            else
-            {
-                var zoneTopY = rectTransform.rect.yMax;
-                var baseY = Model.BasePosition.y;
-                var availableHeight = zoneTopY - baseY;
-                var rect = elementView.GetComponent<RectTransform>();
-                var newElementHeight = rect != null ? rect.rect.height * elementView.transform.localScale.y : 0f;
-                if (!Model.CanAddElement(newElementHeight, availableHeight))
-                {
-                    _ = notificationService.ShowNotification("HeightLimit");
+                    _ = notificationService.ShowNotification("MissCube");
                     return false;
                 }
             }
@@ -145,6 +155,7 @@ namespace Zones.DropZones.Tower
         {
             var view = elementPool.Get();
             view.SetSprite(elementType.Sprite);
+            view.SetAlpha(0);
             view.transform.SetParent(View.ElementsContainer, false);
             var rect = view.GetComponent<RectTransform>();
             if (rect == null)
@@ -154,30 +165,45 @@ namespace Zones.DropZones.Tower
                 return;
             }
 
-            var elementWidth = rect.rect.width * view.transform.localScale.x;
-            var elementHeight = rect.rect.height * view.transform.localScale.y;
+            var elementWidth = rect.rect.width;
+            var elementHeight = rect.rect.height;
             var model = TowerElementModel.Create(elementType, elementWidth);
             model.ElementHeight = elementHeight;
+            view.gameObject.SetActive(true);
             Model.AddElement(model);
             view.OnBeginDragEvent += eventData => OnElementBeginDrag(model, view, eventData);
             view.OnRemoveRequested += RemoveElement;
             activeElements.Add((model, view));
-            animationService.PlayFade(view.transform, true, 0.2f);
             UpdateElementsPositions();
+            animationService.PlayFade(view.transform, true, 0.6f);
         }
-
 
         private void RemoveElement(ElementModel elementModel)
         {
             var index = activeElements.FindIndex(p => p.model == elementModel);
             if (index < 0) return;
-            (_, var v) = activeElements[index];
-            animationService.PlayFade(v.transform, false, 0.2f, () =>
+            var (_, v) = activeElements[index];
+            if (v == null)
             {
+                Debug.LogWarning("RemoveElement: ElementView is null, skipping.");
                 activeElements.RemoveAt(index);
                 Model.RemoveElementAt(index);
-                elementPool.ReturnToPool(v);
-                AnimateDropDown(index);
+                return;
+            }
+
+            animationService.PlayFade(v.transform, false, 0.2f, () =>
+            {
+                if (activeElements.Contains(((TowerElementModel model, ElementView view))(elementModel, v)))
+                {
+                    activeElements.RemoveAt(index);
+                    Model.RemoveElementAt(index);
+                    elementPool.ReturnToPool(v);
+                    AnimateDropDown(index);
+                }
+                else
+                {
+                    Debug.LogWarning($"RemoveElement: ElementView {v.name} already removed or not in activeElements.");
+                }
             });
         }
 
@@ -194,7 +220,7 @@ namespace Zones.DropZones.Tower
             for (var i = 0; i < targets.Length; i++)
             {
                 var globalIndex = startIndex + i;
-                (_, var view) = activeElements[globalIndex];
+                var (_, view) = activeElements[globalIndex];
                 targets[i] = view.transform;
                 var rt = view.GetComponent<RectTransform>();
                 var pivotY = rt?.pivot.y ?? 0.5f;
@@ -208,7 +234,7 @@ namespace Zones.DropZones.Tower
         {
             for (var i = 0; i < activeElements.Count; i++)
             {
-                (var model, var view) = activeElements[i];
+                var (model, view) = activeElements[i];
                 model.Index = i;
                 var rt = view.GetComponent<RectTransform>();
                 if (rt == null) continue;

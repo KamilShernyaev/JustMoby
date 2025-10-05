@@ -69,3 +69,4 @@ MonoBehaviour:
     Sprite: {fileID: 21300000, guid: b18e0e9ba700481448093e4f7b9e0fd6, type: 3}
   - ZoneType: 2
     Sprite: {fileID: 21300000, guid: d2a0ff4f13f59a04abc8e8602dc6263f, type: 3}
+  holeSprite: {fileID: 21300000, guid: 7750ad4629b7dcf47887f01a5f5395eb, type: 3}

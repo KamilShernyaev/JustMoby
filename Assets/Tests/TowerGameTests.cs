@@ -3,8 +3,10 @@ using System.Collections;
 using Core;
 using Element;
 using NUnit.Framework;
+using Services.PoolService;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 using Zones.DropZones.DropRules;
 using Zones.DropZones.Tower;
 using Zones.DropZones.Tower.TowerElement;
@@ -104,21 +106,16 @@ namespace Tests
             Assert.AreEqual(0, model.ElementsScroll.Count, "Should initialize empty list for empty config.");
         }
 
-        [UnityTest]
-        public IEnumerator ObjectPool_GetAndReturn_ReusesObject()
+        [Test]
+        public void ObjectPool_GetAndReturn()
         {
-            var prefab = new GameObject("TestElement").AddComponent<ElementView>();
-            var pool = new Services.PoolService.ObjectPool<ElementView>(prefab);
-
+            var prefab = new GameObject("TestPrefab").AddComponent<Image>();
+            var pool = new ObjectPool<Image>(prefab, initialSize: 2);
             var obj1 = pool.Get();
+            Assert.IsTrue(obj1.gameObject.activeSelf);
             pool.ReturnToPool(obj1);
-            var obj2 = pool.Get();
-
-            Assert.AreEqual(obj1, obj2, "Pool should reuse the same object after return.");
-            Assert.IsTrue(obj2.gameObject.activeSelf, "Returned object should be active.");
-
-            Object.DestroyImmediate(prefab.gameObject);
-            yield return null;
+            Assert.IsFalse(obj1.gameObject.activeSelf);
+            Assert.AreEqual(1, pool.AvailableCount);
         }
 
         [Test]

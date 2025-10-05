@@ -743,7 +743,6 @@ MonoBehaviour:
   canvas: {fileID: 522360014}
   animationsContainer: {fileID: 7908442755196325720}
   gameConfig: {fileID: 11400000, guid: a4b528e97869575498ce2fa62868f1a3, type: 2}
-  dragHandler: {fileID: 0}
   jsonConfigFile: {fileID: 0}
 --- !u!4 &1423641278
 Transform:
@@ -830,7 +829,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 7750ad4629b7dcf47887f01a5f5395eb, type: 3}
+  m_Sprite: {fileID: 0}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1

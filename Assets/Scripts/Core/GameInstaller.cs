@@ -32,20 +32,12 @@ namespace Core
         [SerializeField] private Canvas canvas;
         [SerializeField] private Transform animationsContainer;
 
-        [Header("Game Config")] [SerializeField]
-        private GameConfig gameConfig;
-
-        [SerializeField] private DragHandler dragHandler;
-
-        [SerializeField] private TextAsset jsonConfigFile;
-
         protected override void Configure(IContainerBuilder builder)
         {
             // Register scene instances
             builder.RegisterInstance(scrollContainerView).AsSelf();
             builder.RegisterInstance(holeViewPrefab).AsSelf();
             builder.RegisterInstance(towerContainerView).AsSelf();
-            //builder.RegisterInstance(dragHandler).AsSelf().AsImplementedInterfaces();
 
             // Localization service
             builder.Register<UnityLocalizationService>(Lifetime.Singleton).As<ILocalizationService>();
@@ -53,13 +45,17 @@ namespace Core
             // Object pool for ContainerElementView
             builder.Register<ObjectPool<ElementView>>(Lifetime.Scoped)
                 .WithParameter("prefab", containerElementViewPrefab)
-                .WithParameter("parent", (Transform)null)
+                .WithParameter("parent", towerContainerView.ElementsContainer)
+                .WithParameter("initialSize", 20)
+                .WithParameter("expandBy", 10)
                 .Keyed("MainPool")
                 .AsSelf();
 
             builder.Register<ObjectPool<ElementView>>(Lifetime.Scoped)
                 .WithParameter("prefab", containerElementViewPrefab)
                 .WithParameter("parent", animationsContainer)
+                .WithParameter("initialSize", 10)
+                .WithParameter("expandBy", 5)
                 .Keyed("AnimationPool")
                 .AsSelf();
 

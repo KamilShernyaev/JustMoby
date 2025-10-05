@@ -1,5 +1,6 @@
 using System;
 using Element;
+using Services.AnimationService;
 using Services.CanvasScalerService;
 using Services.ConfigProvider;
 using Services.DragService;

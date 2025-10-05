@@ -11,5 +11,6 @@ namespace Services.AnimationService
         void PlayFade(Transform target, bool fadeIn, float duration = 0.3f, Action onComplete = null);
 
         void PlayDropDown(Transform[] targets, Vector3[] newPositions, float duration = 0.5f, Action onComplete = null);
+        void CancelAnimation(Transform vTransform);
     }
 }

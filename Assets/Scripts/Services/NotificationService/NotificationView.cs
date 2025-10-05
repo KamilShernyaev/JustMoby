@@ -13,7 +13,6 @@ namespace Services.NotificationService
         {
             if (canvasGroup == null) canvasGroup = GetComponent<CanvasGroup>();
             if (textComponent == null) textComponent = GetComponentInChildren<TMP_Text>();
-            gameObject.SetActive(false);
         }
 
         public void SetText(string message)

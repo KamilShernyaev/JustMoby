@@ -30,18 +30,8 @@ namespace Services.NotificationService
 
             var localizedText = await localizationService.GetStringAsync(localizationKey);
             notificationView.SetText(localizedText);
-
             animationService.PlayFade(notificationView.transform, true, 0.3f,
-                () =>
-                {
-                    PrimeTween.Tween.Delay(displayDuration).OnComplete(() =>
-                    {
-                        animationService.PlayFade(notificationView.transform, false, 0.3f,
-                            () => { notificationView.gameObject.SetActive(false); });
-                    });
-                });
-
-            notificationView.gameObject.SetActive(true);
+                () => { animationService.PlayFade(notificationView.transform, false, 0.3f); });
         }
     }
 }

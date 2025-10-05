@@ -21,6 +21,7 @@ namespace Zones.DropZones.Hole
             if (View != null && configProvider != null)
             {
                 View.SetBackground(configProvider.GetBackgroundSprite(BackgroundZoneType.Hole));
+                View.HoleImage.sprite = configProvider.HoleSprite;
             }
 
             InitializeHoleBounds();

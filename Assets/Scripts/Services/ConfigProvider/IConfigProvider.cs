@@ -8,6 +8,7 @@ namespace Services.ConfigProvider
     {
         ElementType[] AvailableTypes { get; }
         int BottomElementCount { get; }
+        Sprite HoleSprite { get; }
         Sprite GetBackgroundSprite(BackgroundZoneType zoneType);
     }
 }

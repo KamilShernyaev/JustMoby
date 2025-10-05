@@ -14,8 +14,11 @@ namespace Core
         [Header("Backgrounds")] [SerializeField]
         private BackgroundConfig[] backgrounds;
 
-        public ElementType[] AvailableTypes => availableTypes;
+        [Header("Hole Sprite")] [SerializeField]
+        private Sprite holeSprite;
 
+        public ElementType[] AvailableTypes => availableTypes;
+        public Sprite HoleSprite => holeSprite;
         public int BottomElementCount => bottomCubeCount;
 
         public Sprite GetBackgroundSprite(BackgroundZoneType zoneType)
