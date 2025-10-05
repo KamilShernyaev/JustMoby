@@ -1,5 +1,6 @@
 using System;
 using Element;
+using Services.CanvasScalerService;
 using Services.ConfigProvider;
 using Services.DragService;
 using Services.SaveLoadService;
@@ -14,16 +15,21 @@ namespace Core
     {
         private IObjectResolver container;
         private ISaveLoadService saveLoadService;
+        private ICanvasScalerService canvasScalerService;
 
         [Inject]
-        public void Construct(IObjectResolver container, ISaveLoadService saveLoadService)
+        public void Construct(IObjectResolver container, ISaveLoadService saveLoadService,
+            ICanvasScalerService canvasScalerService)
         {
             this.container = container;
             this.saveLoadService = saveLoadService;
+            this.canvasScalerService = canvasScalerService;
         }
 
         private void Start()
         {
+            canvasScalerService.AdjustUI();
+
             InitializeControllers();
             LoadGameState();
         }
@@ -42,12 +48,12 @@ namespace Core
         {
             try
             {
-                var scrollModel = container.Resolve<ScrollContainerModel>();
-                var scrollView = container.Resolve<ScrollContainerView>();
+                container.Resolve<ScrollContainerModel>();
+                container.Resolve<ScrollContainerView>();
                 var dragHandler = container.Resolve<IDragStartHandler>();
-                var elementFactory = container.Resolve<Func<ElementType, ElementView>>();
-                var config = container.Resolve<IConfigProvider>();
-                var scrollController = container.Resolve<ScrollContainerController>();
+                container.Resolve<Func<ElementType, ElementView>>();
+                container.Resolve<IConfigProvider>();
+                container.Resolve<ScrollContainerController>();
                 var towerController = container.Resolve<TowerContainerController>();
                 towerController.Initialize(dragHandler);
             }
@@ -62,7 +68,7 @@ namespace Core
             try
             {
                 var config = container.Resolve<IConfigProvider>();
-                var scrollModel = container.Resolve<ScrollContainerModel>();
+                container.Resolve<ScrollContainerModel>();
 
                 var towerData = saveLoadService.LoadData();
                 if (towerData == null)

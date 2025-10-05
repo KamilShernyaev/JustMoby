@@ -49,3 +49,4 @@ MonoBehaviour:
   autoRun: 1
   autoInjectGameObjects: []
   gameConfig: {fileID: 11400000, guid: a4b528e97869575498ce2fa62868f1a3, type: 2}
+  canvasScalerConfig: {fileID: 11400000, guid: c1485fcd5c91fd446b54cd966fcd7bf6, type: 2}

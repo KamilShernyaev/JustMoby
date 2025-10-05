@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Element;
 using Services.AnimationService;
+using Services.CanvasScalerService;
 using Services.ConfigProvider;
 using Services.DragService;
 using Services.LocalizationService;
@@ -40,25 +41,11 @@ namespace Core
 
         protected override void Configure(IContainerBuilder builder)
         {
-            if (scrollContainerView == null)
-                Debug.LogError(
-                    $"{this} scrollContainerView is NULL in Inspector! Cannot register ScrollContainerView.");
-
-            if (containerElementViewPrefab == null)
-                Debug.LogError($"{this}  containerElementViewPrefab is NULL! Pool will fail.");
-
-            if (gameConfig == null || gameConfig.AvailableTypes == null || gameConfig.AvailableTypes.Length == 0)
-                Debug.LogError($"{this}  gameConfig or AvailableTypes NULL/empty!");
-
-            if (canvas == null)
-                Debug.LogError(
-                    $"{this}  Canvas is NULL in Inspector! DraggingElementView cannot be created under null transform.");
-
             // Register scene instances
             builder.RegisterInstance(scrollContainerView).AsSelf();
             builder.RegisterInstance(holeViewPrefab).AsSelf();
             builder.RegisterInstance(towerContainerView).AsSelf();
-            builder.RegisterInstance(dragHandler).AsSelf().AsImplementedInterfaces();
+            //builder.RegisterInstance(dragHandler).AsSelf().AsImplementedInterfaces();
 
             // Localization service
             builder.Register<UnityLocalizationService>(Lifetime.Singleton).As<ILocalizationService>();
@@ -75,6 +62,9 @@ namespace Core
                 .WithParameter("parent", animationsContainer)
                 .Keyed("AnimationPool")
                 .AsSelf();
+
+            builder.RegisterComponentOnNewGameObject<DragHandler>(Lifetime.Singleton)
+                .AsImplementedInterfaces().AsSelf();
 
             // DraggingElementView prefab registration under Canvas
             builder.RegisterComponentInNewPrefab(draggingElementViewPrefab, Lifetime.Singleton)
@@ -106,7 +96,7 @@ namespace Core
                 .AsSelf();
 
             builder.Register<DraggingElementModel>(Lifetime.Singleton);
-            builder.Register<DragController>(Lifetime.Singleton);
+            builder.Register<DragController>(Lifetime.Singleton).WithParameter(canvas);
 
             // Notification view component registration
             builder.RegisterComponent(notificationViewPrefab)
@@ -128,6 +118,9 @@ namespace Core
             }, Lifetime.Singleton);
 
             builder.Register<ScrollContainerModel>(Lifetime.Singleton);
+            builder.Register<CanvasScalerService>(Lifetime.Singleton)
+                .AsImplementedInterfaces()
+                .WithParameter(canvas);
 
             // Direct registration ScrollContainerController
             builder.Register<ScrollContainerController>(Lifetime.Singleton)

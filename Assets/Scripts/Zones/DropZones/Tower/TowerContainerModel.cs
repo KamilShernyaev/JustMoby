@@ -36,6 +36,13 @@ namespace Zones.DropZones.Tower
 
         public void SetElementAt(int index, TowerElementModel element) => elements[index] = element;
 
+        public Vector2 GetTopPosition(float pivotY)
+        {
+            if (Elements.Count == 0)
+                return BasePosition;
+            return GetElementPosition(Elements.Count, pivotY);
+        }
+
         public Vector3 GetElementPosition(int index, float pivotY = 0.5f)
         {
             var y = BasePosition.y;
@@ -47,7 +54,7 @@ namespace Zones.DropZones.Tower
             }
 
             var offset = elements[index].ElementHeight * pivotY;
-            var posY = y - offset;
+            var posY = y + offset;
 
             return new Vector3(x, posY, 0);
         }
@@ -103,7 +110,7 @@ namespace Zones.DropZones.Tower
 
                 elements.Add(element);
             }
-            
+
             BasePosition = data.BasePosition.ToVector3();
         }
     }

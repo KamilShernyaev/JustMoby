@@ -12,7 +12,6 @@ namespace Services.AnimationService
     {
         private readonly ObjectPool<ElementView> jumpPool;
         private readonly Transform animationsContainer;
-        private readonly Canvas canvas;
 
         public AnimationService(
             [Key("AnimationPool")] ObjectPool<ElementView> jumpPool,
@@ -20,38 +19,28 @@ namespace Services.AnimationService
             Canvas canvas)
         {
             this.jumpPool = jumpPool;
-            this.animationsContainer = animationsContainer;
-            this.canvas = canvas;
-
-            // Предварительное создание объектов пула под контейнером анимаций
-            jumpPool.PreWarm(5, this.animationsContainer);
+            this.animationsContainer = animationsContainer ?? canvas.transform;
+            jumpPool.PreWarm(5, animationsContainer);
         }
 
-        /// <summary>
-        /// Запускает анимацию прыжка элемента.
-        /// Позиции должны быть в локальных координатах Canvas (anchoredPosition).
-        /// </summary>
-        public void PlayJump(Vector3 startLocalPos, Vector3 endLocalPos, Sprite elementSprite = null, float duration = 0.5f,
+        public void PlayJump(Vector3 startLocalPos, Vector3 endLocalPos, Sprite elementSprite = null,
+            float duration = 0.5f,
             Action onComplete = null, bool arc = true)
         {
             var jumpView = jumpPool.Get();
-            jumpView.transform.SetParent(animationsContainer, false); // Устанавливаем родителя без изменения локальных координат
-
             var rt = jumpView.GetComponent<RectTransform>();
-            if (rt != null)
+            if (rt == null)
             {
-                rt.anchoredPosition = new Vector2(startLocalPos.x, startLocalPos.y);
+                Debug.LogError("AnimationService: No RectTransform on jumpView!");
+                onComplete?.Invoke();
+                return;
             }
-            else
-            {
-                // Если RectTransform отсутствует — fallback в world space
-                jumpView.transform.position = canvas != null ? canvas.transform.TransformPoint(startLocalPos) : startLocalPos;
-            }
+
+            jumpView.transform.SetParent(animationsContainer, false);
+            rt.anchoredPosition = new Vector2(startLocalPos.x, startLocalPos.y);
 
             if (elementSprite != null)
-            {
                 jumpView.SetSprite(elementSprite);
-            }
 
             jumpView.SetAlpha(1f);
 
@@ -62,14 +51,12 @@ namespace Services.AnimationService
                 canvasGroup.interactable = false;
             }
 
+            Debug.Log($"PlayJump: start={startLocalPos}, end={endLocalPos} (Canvas-local)");
+
             if (arc)
-            {
                 AnimateJumpView(jumpView, endLocalPos, duration, Complete);
-            }
             else
-            {
                 AnimateLinearJumpView(jumpView, endLocalPos, duration, Complete);
-            }
 
             void Complete()
             {
@@ -88,46 +75,37 @@ namespace Services.AnimationService
         {
             var rt = view.GetComponent<RectTransform>();
             var canvasGroup = view.GetComponent<CanvasGroup>();
+            var startPos = rt.anchoredPosition;
+            var endPos = new Vector2(endLocalPos.x, endLocalPos.y);
 
-            var startLocalPos = rt != null ? (Vector3)rt.anchoredPosition : view.transform.localPosition;
-
-            var midY = Mathf.Max(endLocalPos.y, startLocalPos.y) + 150f;
-            var midX = (startLocalPos.x + endLocalPos.x) / 2f + UnityEngine.Random.Range(-50f, 50f);
-            var midPos2 = new Vector2(midX, midY);
-            var endPos2 = new Vector2(endLocalPos.x, endLocalPos.y);
+            var midY = Mathf.Max(startPos.y, endPos.y) + 100f;
+            var midX = (startPos.x + endPos.x) / 2f + UnityEngine.Random.Range(-50f, 50f);
+            var controlPos = new Vector2(midX, midY);
 
             var seq = Sequence.Create();
 
-            if (rt != null)
+            // Single Bezier tween for smooth parabolic arc
+            seq.Chain(Tween.Custom(0f, 1f, duration, (float t) =>
             {
-                // Анимация в локальных координатах UI
-                seq.Chain(Tween.UIAnchoredPosition(rt, midPos2, duration * 0.5f, Ease.OutQuad))
-                   .Chain(Tween.UIAnchoredPosition(rt, endPos2, duration * 0.5f, Ease.InQuad));
-            }
-            else
-            {
-                // Фолбэк в world space с конвертацией локальных координат в мировые
-                var midWorld = canvas != null ? canvas.transform.TransformPoint(midPos2) : (Vector3)midPos2;
-                var endWorld = canvas != null ? canvas.transform.TransformPoint(endPos2) : (Vector3)endPos2;
+                var u = 1f - t;
+                var t2 = t * t;
+                var u2 = u * u;
+                var twoUT = 2f * u * t;
+                var pos = u2 * startPos + twoUT * controlPos + t2 * endPos;
+                rt.anchoredPosition = pos;
+            }, Ease.Linear));
 
-                seq.Chain(Tween.Position(view.transform, midWorld, duration * 0.5f, Ease.OutQuad))
-                   .Chain(Tween.Position(view.transform, endWorld, duration * 0.5f, Ease.InQuad));
-            }
-
-            if (canvasGroup != null)
-            {
-                seq.Group(Tween.Delay(duration - 0.2f))
-                   .Group(Tween.Alpha(canvasGroup, 0f, 0.2f, Ease.InQuad));
-            }
-
-            var startRotation = view.transform.localEulerAngles;
-            seq.Group(Tween.LocalEulerAngles(view.transform, startRotation, new Vector3(0, 0, 360f), duration, Ease.Linear));
+            seq.Group(Tween.LocalEulerAngles(view.transform, view.transform.localEulerAngles, new Vector3(0, 0, 360f),
+                duration, Ease.Linear));
             seq.Group(Tween.Scale(view.transform, Vector3.one * 1.2f, duration * 0.3f, Ease.OutQuad)
                 .Chain(Tween.Scale(view.transform, Vector3.one, duration * 0.7f, Ease.InQuad)));
 
             seq.OnComplete(() =>
             {
-                view.gameObject.SetActive(false);
+                if (canvasGroup != null)
+                    canvasGroup.alpha = 0f;
+                else
+                    view.gameObject.SetActive(false);
                 onComplete?.Invoke();
             });
         }
@@ -135,26 +113,18 @@ namespace Services.AnimationService
         private void AnimateLinearJumpView(ElementView view, Vector3 endLocalPos, float duration, Action onComplete)
         {
             var rt = view.GetComponent<RectTransform>();
-            if (rt != null)
-            {
-                var endPos2 = new Vector2(endLocalPos.x, endLocalPos.y);
-                Tween.UIAnchoredPosition(rt, endPos2, duration, Ease.Linear)
-                    .OnComplete(() =>
-                    {
+            var endPos = new Vector2(endLocalPos.x, endLocalPos.y);
+
+            Tween.UIAnchoredPosition(rt, endPos, duration, Ease.Linear)
+                .OnComplete(() =>
+                {
+                    var canvasGroup = view.GetComponent<CanvasGroup>();
+                    if (canvasGroup != null)
+                        canvasGroup.alpha = 0f;
+                    else
                         view.gameObject.SetActive(false);
-                        onComplete?.Invoke();
-                    });
-            }
-            else
-            {
-                var endWorld = canvas != null ? canvas.transform.TransformPoint(endLocalPos) : endLocalPos;
-                Tween.Position(view.transform, endWorld, duration, Ease.Linear)
-                    .OnComplete(() =>
-                    {
-                        view.gameObject.SetActive(false);
-                        onComplete?.Invoke();
-                    });
-            }
+                    onComplete?.Invoke();
+                });
         }
 
         public void PlayFade(Transform target, bool fadeIn, float duration = 0.3f, Action onComplete = null)
@@ -165,9 +135,10 @@ namespace Services.AnimationService
                 return;
             }
 
+            var canvasGroup = target.GetComponent<CanvasGroup>();
             var startAlpha = fadeIn ? 0f : 1f;
             var endAlpha = fadeIn ? 1f : 0f;
-            var canvasGroup = target.GetComponent<CanvasGroup>();
+
             if (canvasGroup == null)
             {
                 var image = target.GetComponent<Image>();
@@ -182,23 +153,24 @@ namespace Services.AnimationService
                 {
                     onComplete?.Invoke();
                 }
+
                 return;
             }
 
-            var startScale = fadeIn ? Vector3.one * 0.8f : Vector3.one;
-            var endScale = fadeIn ? Vector3.one : Vector3.one * 0.8f;
-
             canvasGroup.alpha = startAlpha;
+            var startScale = fadeIn ? Vector3.one * 0.8f : Vector3.one;
             target.localScale = startScale;
 
-            Sequence.Create()
-                .Chain(Tween.Alpha(canvasGroup, endAlpha, duration * 0.7f, Ease.InOutQuad))
-                .Group(Tween.Scale(target, endScale, duration * 0.3f, Ease.OutQuad)
-                    .Chain(Tween.Scale(target, Vector3.one, duration * 0.7f, Ease.InQuad)))
-                .OnComplete(onComplete);
+            var seq = Sequence.Create();
+            seq.Chain(Tween.Alpha(canvasGroup, endAlpha, duration, Ease.InOutQuad));
+            seq.Group(Tween.Scale(target, fadeIn ? Vector3.one : Vector3.one * 0.8f, duration,
+                fadeIn ? Ease.OutQuad : Ease.InQuad));
+
+            seq.OnComplete(onComplete);
         }
 
-        public void PlayDropDown(Transform[] targets, Vector3[] newPositions, float duration = 0.5f, Action onComplete = null)
+        public void PlayDropDown(Transform[] targets, Vector3[] newPositions, float duration = 0.5f,
+            Action onComplete = null)
         {
             if (targets == null || newPositions == null || targets.Length == 0 || targets.Length != newPositions.Length)
             {
@@ -210,16 +182,7 @@ namespace Services.AnimationService
             for (var i = 0; i < targets.Length; i++)
             {
                 if (targets[i] == null) continue;
-
-                var rt = targets[i].GetComponent<RectTransform>();
-                if (rt != null)
-                {
-                    seq.Group(Tween.UIAnchoredPosition(rt, new Vector2(newPositions[i].x, newPositions[i].y), duration, Ease.InOutQuad));
-                }
-                else
-                {
-                    seq.Group(Tween.Position(targets[i], newPositions[i], duration, Ease.InOutQuad));
-                }
+                seq.Group(Tween.LocalPosition(targets[i], newPositions[i], duration, Ease.InOutQuad));
             }
 
             seq.OnComplete(onComplete);

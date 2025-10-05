@@ -40,7 +40,6 @@ namespace Zones.DropZones.Hole
             }
 
             var hit = Model.IsPointInsideEllipse(localPoint);
-
             return hit;
         }
 

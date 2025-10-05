@@ -46,15 +46,13 @@ namespace Zones.DropZones.Tower
         public void LoadFromSavedData()
         {
             ClearActiveElements();
-            for (int i = 0; i < Model.ElementCount; i++)
+            for (var i = 0; i < Model.ElementCount; i++)
             {
                 var m = Model.GetElementAt(i);
                 var view = elementPool.Get();
                 view.SetSprite(m.ElementType.Sprite);
                 view.transform.SetParent(View.ElementsContainer, false);
                 view.OnBeginDragEvent += eventData => OnElementBeginDrag(m, view, eventData);
-                view.OnDragEvent += eventData => OnElementDrag(m, view, eventData);
-                view.OnEndDragEvent += eventData => OnElementEndDrag(m, view, eventData);
                 view.OnRemoveRequested += RemoveElement;
                 activeElements.Add((m, view));
             }
@@ -74,9 +72,9 @@ namespace Zones.DropZones.Tower
 
         public bool TryDropElement(ElementModel elementModel, ElementView elementView, Vector3 dropWorldPosition)
         {
-            if (elementModel is DraggingElementModel { OriginalModel: TowerElementModel })
+            if (elementModel is TowerElementModel)
             {
-                return true;
+                return false;
             }
 
             if (Model == null || View == null) return false;
@@ -162,12 +160,10 @@ namespace Zones.DropZones.Tower
             model.ElementHeight = elementHeight;
             Model.AddElement(model);
             view.OnBeginDragEvent += eventData => OnElementBeginDrag(model, view, eventData);
-            view.OnDragEvent += eventData => OnElementDrag(model, view, eventData);
-            view.OnEndDragEvent += eventData => OnElementEndDrag(model, view, eventData);
             view.OnRemoveRequested += RemoveElement;
             activeElements.Add((model, view));
-            animationService.PlayFade(view.transform, true, 0.2f); // Alpha 0→1 + scale
-            UpdateElementsPositions(); // Instant pos (no anim for add)
+            animationService.PlayFade(view.transform, true, 0.2f);
+            UpdateElementsPositions();
         }
 
 
@@ -190,20 +186,12 @@ namespace Zones.DropZones.Tower
             dragStartHandler?.OnDragStart(model, view, eventData);
         }
 
-        private void OnElementEndDrag(TowerElementModel model, ElementView view, PointerEventData eventData)
-        {
-        }
-
-        private void OnElementDrag(TowerElementModel model, ElementView view, PointerEventData eventData)
-        {
-        }
-
         private void AnimateDropDown(int startIndex)
         {
             if (startIndex >= activeElements.Count) return;
             var targets = new Transform[activeElements.Count - startIndex];
             var newPositions = new Vector3[targets.Length];
-            for (int i = 0; i < targets.Length; i++)
+            for (var i = 0; i < targets.Length; i++)
             {
                 var globalIndex = startIndex + i;
                 (_, var view) = activeElements[globalIndex];

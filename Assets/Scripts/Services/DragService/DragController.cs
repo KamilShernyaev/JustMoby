@@ -14,14 +14,16 @@ namespace Services.DragService
         private readonly IReadOnlyList<IDropZone> dropZones;
         private readonly INotificationService notificationService;
         private readonly IAnimationService animationService;
+        private readonly Canvas canvas;
 
         public DragController(DraggingElementModel model, DraggingElementView view, IReadOnlyList<IDropZone> dropZones,
-            INotificationService notificationService, IAnimationService animationService) : base(model, view)
-
+            INotificationService notificationService, IAnimationService animationService, Canvas canvas)
+            : base(model, view)
         {
             this.dropZones = dropZones;
             this.notificationService = notificationService;
             this.animationService = animationService;
+            this.canvas = canvas;
 
             view.OnDragEvent += eventData => OnDrag(view, eventData);
             view.OnEndDragEvent += eventData => OnEndDrag(model, view, eventData);
@@ -52,54 +54,76 @@ namespace Services.DragService
             var targetZone = dropZones.FirstOrDefault(zone => zone.IsInsideZone(eventData.position));
             if (targetZone == null)
             {
-                // Miss no zone: Fade out dragging + hide (no jump back)
                 animationService.PlayFade(view.transform, false, 0.3f, view.Hide);
                 _ = notificationService.ShowNotification("MissCube");
                 return;
             }
 
-            Vector3 targetPosition = eventData.position;
-            var startPosition = model.OriginalView.transform.position;
+            var startLocalPos = ConvertWorldToLocalCanvas(model.OriginalView.transform.position);
+            var targetLocalPos = ConvertScreenToLocalCanvas(eventData.position);
+
+            var isTowerDropFromTower = false;
             if (targetZone is Zones.DropZones.Hole.HoleController hole)
             {
-                targetPosition = hole.View.HoleImage.rectTransform.position;
+                var holeWorldPos = hole.View.HoleImage.rectTransform.position;
+                targetLocalPos = ConvertWorldToLocalCanvas(holeWorldPos);
                 _ = notificationService.ShowNotification("DropHole");
             }
             else if (targetZone is Zones.DropZones.Tower.TowerContainerController tower)
             {
-                if (tower.Model.ElementCount == 0)
+                var towerModel = tower.Model;
+                if (towerModel.ElementCount > 0)
                 {
-                    var rect = tower.View.GetComponent<RectTransform>().rect;
-                    targetPosition = new Vector3(tower.Model.BasePosition.x, rect.yMin, 0);
-                }
-                else
-                {
-                    var topIndex = tower.Model.ElementCount - 1;
-                    var topPos = tower.Model.GetElementPosition(topIndex, 0.5f);
-                    targetPosition = new Vector3(topPos.x + UnityEngine.Random.Range(-50f, 50f), topPos.y + 50f, 0);
+                    targetLocalPos += new Vector3(UnityEngine.Random.Range(-50f, 50f), 50f, 0);
                 }
 
                 _ = notificationService.ShowNotification("PlaceCube");
+                isTowerDropFromTower = model.OriginalModel is Zones.DropZones.Tower.TowerElement.TowerElementModel;
             }
 
             var dropped = targetZone.TryDropElement(model.OriginalModel, model.OriginalView, eventData.position);
             if (!dropped)
             {
-                // Miss after zone: Fade out dragging + linear jump back (pool view) + hide
-                animationService.PlayFade(view.transform, false, 0.3f, () => // Fade dragging first
+                var currentDropLocalPos = ConvertScreenToLocalCanvas(eventData.position);
+                animationService.PlayFade(view.transform, false, 0.3f, () =>
                 {
-                    // Linear jump back (visual copy from current to start)
-                    animationService.PlayJump(eventData.position, startPosition, model.ElementType.Sprite, 0.3f,
-                        view.Hide, arc: false); // Callback: Hide dragging (no extra fade)
+                    animationService.PlayJump(currentDropLocalPos, startLocalPos, model.ElementType.Sprite, 0.3f,
+                        view.Hide, arc: false);
                 });
                 _ = notificationService.ShowNotification("MissCube");
                 return;
             }
 
-            // Success: Unchanged
             view.Hide();
-            animationService.PlayJump(startPosition, targetPosition, model.ElementType.Sprite, 0.5f,
-                () => model.OriginalView.OnRemove(model.OriginalModel));
+            animationService.PlayJump(startLocalPos, targetLocalPos, model.ElementType.Sprite, 0.5f,
+                () =>
+                {
+                    if (!isTowerDropFromTower)
+                        model.OriginalView.OnRemove(model.OriginalModel);
+                });
+        }
+
+        private Vector3 ConvertWorldToLocalCanvas(Vector3 worldPos)
+        {
+            if (canvas == null) return worldPos;
+            var canvasRt = canvas.GetComponent<RectTransform>();
+            if (canvasRt == null) return worldPos;
+
+            var localPos = canvasRt.InverseTransformPoint(worldPos);
+            return new Vector3(localPos.x, localPos.y, 0);
+        }
+
+        private Vector3 ConvertScreenToLocalCanvas(Vector2 screenPos)
+        {
+            if (canvas == null) return new Vector3(screenPos.x, screenPos.y, 0);
+
+            var canvasRt = canvas.GetComponent<RectTransform>();
+            if (canvasRt == null) return new Vector3(screenPos.x, screenPos.y, 0);
+
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRt, screenPos, null, out var localPos))
+                return new Vector3(localPos.x, localPos.y, 0);
+            Debug.LogWarning("DragController: ScreenToLocal failed (check Canvas mode) — fallback screen.");
+            return new Vector3(screenPos.x, screenPos.y, 0);
         }
     }
 }
